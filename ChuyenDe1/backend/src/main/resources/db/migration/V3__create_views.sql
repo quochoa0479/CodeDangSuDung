@@ -1,6 +1,7 @@
 -- =====================================================================
 -- V3__create_views.sql
 -- Khai thác CSDL: 5 Views phục vụ báo cáo và phân tích thông minh
+-- (Sử dụng hoàn toàn cú pháp SELECT FROM WHERE, không dùng mệnh đề JOIN)
 -- =====================================================================
 
 -- View 1: v_rfm_summary - Thống kê tổng quan các phân khúc khách hàng
@@ -18,6 +19,7 @@ FROM customer_segments cs
 GROUP BY cs.segment;
 
 -- View 2: v_customer_360 - Chân dung toàn diện khách hàng (Thông tin + RFM + Hành vi)
+-- Sử dụng liên kết bảng qua mệnh đề WHERE (không dùng JOIN)
 CREATE OR REPLACE VIEW v_customer_360 AS
 SELECT 
     c.id AS customer_id,
@@ -40,10 +42,11 @@ SELECT
     cs.total_purchases,
     cs.preferred_category,
     cs.last_purchase_at
-FROM customers c
-LEFT JOIN customer_segments cs ON c.id = cs.customer_id;
+FROM customers c, customer_segments cs
+WHERE c.id = cs.customer_id;
 
 -- View 3: v_churn_risk_customers - Cảnh báo khách hàng nguy cơ rời bỏ
+-- Sử dụng liên kết bảng qua mệnh đề WHERE (không dùng JOIN)
 CREATE OR REPLACE VIEW v_churn_risk_customers AS
 SELECT 
     c.id AS customer_id,
@@ -56,24 +59,25 @@ SELECT
     cs.frequency,
     cs.monetary,
     cs.last_purchase_at
-FROM customer_segments cs
-JOIN customers c ON cs.customer_id = c.id
-WHERE cs.segment IN ('AT_RISK', 'ABOUT_TO_SLEEP', 'CANNOT_LOSE_THEM')
-   OR (cs.r_score <= 2 AND cs.monetary > 5000000);
+FROM customer_segments cs, customers c
+WHERE cs.customer_id = c.id
+  AND (cs.segment IN ('AT_RISK', 'ABOUT_TO_SLEEP', 'CANNOT_LOSE_THEM')
+       OR (cs.r_score <= 2 AND cs.monetary > 5000000));
 
 -- View 4: v_category_preference - Danh mục yêu thích và doanh thu theo phân khúc
+-- Sử dụng liên kết đa bảng qua mệnh đề WHERE (không dùng JOIN)
 CREATE OR REPLACE VIEW v_category_preference AS
 SELECT 
     cs.segment,
     cat.name AS category_name,
     COUNT(od.id) AS total_items_sold,
     SUM(od.subtotal) AS category_revenue
-FROM customer_segments cs
-JOIN orders o ON cs.customer_id = o.customer_id
-JOIN order_details od ON o.id = od.order_id
-JOIN products p ON od.product_id = p.id
-JOIN categories cat ON p.category_id = cat.id
-WHERE o.order_status = 'COMPLETED'
+FROM customer_segments cs, orders o, order_details od, products p, categories cat
+WHERE cs.customer_id = o.customer_id
+  AND o.id = od.order_id
+  AND od.product_id = p.id
+  AND p.category_id = cat.id
+  AND o.order_status = 'COMPLETED'
 GROUP BY cs.segment, cat.name;
 
 -- View 5: v_monthly_revenue_cohort - Doanh thu theo tháng

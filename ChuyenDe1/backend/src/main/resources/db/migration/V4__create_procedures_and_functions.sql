@@ -1,6 +1,7 @@
 -- =====================================================================
 -- V4__create_procedures_and_functions.sql
 -- Khai thác CSDL: Stored Procedures & Functions thực thi thuật toán RFM
+-- (Sử dụng hoàn toàn cú pháp SELECT FROM WHERE, không dùng mệnh đề JOIN)
 -- =====================================================================
 
 DELIMITER $$
@@ -48,7 +49,7 @@ BEGIN
 END$$
 
 -- Stored Procedure: sp_calculate_rfm
--- Thuật toán phân vị NTILE(5) chia đều nhóm khách hàng và gán phân khúc
+-- Thuật toán phân vị NTILE(5) phân loại khách hàng, dùng thuần cú pháp SELECT FROM WHERE
 DROP PROCEDURE IF EXISTS sp_calculate_rfm$$
 CREATE PROCEDURE sp_calculate_rfm()
 BEGIN
@@ -59,13 +60,27 @@ BEGIN
     WITH raw_metrics AS (
         SELECT 
             c.id AS customer_id,
-            COALESCE(DATEDIFF(NOW(), MAX(o.order_date)), 999) AS recency_days,
-            COUNT(o.id) AS frequency,
-            COALESCE(SUM(o.total_amount), 0) AS monetary,
-            MAX(o.order_date) AS last_purchase_at
+            COALESCE((
+                SELECT DATEDIFF(NOW(), MAX(o.order_date)) 
+                FROM orders o 
+                WHERE o.customer_id = c.id AND o.order_status = 'COMPLETED'
+            ), 999) AS recency_days,
+            COALESCE((
+                SELECT COUNT(o.id) 
+                FROM orders o 
+                WHERE o.customer_id = c.id AND o.order_status = 'COMPLETED'
+            ), 0) AS frequency,
+            COALESCE((
+                SELECT SUM(o.total_amount) 
+                FROM orders o 
+                WHERE o.customer_id = c.id AND o.order_status = 'COMPLETED'
+            ), 0) AS monetary,
+            (
+                SELECT MAX(o.order_date) 
+                FROM orders o 
+                WHERE o.customer_id = c.id AND o.order_status = 'COMPLETED'
+            ) AS last_purchase_at
         FROM customers c
-        LEFT JOIN orders o ON c.id = o.customer_id AND o.order_status = 'COMPLETED'
-        GROUP BY c.id
     ),
     quantiles AS (
         SELECT 
@@ -121,25 +136,34 @@ BEGIN
         avg_order_value = VALUES(avg_order_value),
         calculated_at = NOW();
 
-    -- Cập nhật thống kê hoạt động từ bảng user_activity_logs (nếu có dữ liệu)
+    -- Cập nhật thống kê hoạt động từ bảng user_activity_logs (dùng SELECT FROM WHERE)
     UPDATE customer_segments cs
-    LEFT JOIN (
-        SELECT 
-            customer_id,
-            SUM(CASE WHEN action_type = 'VIEW_PRODUCT' THEN 1 ELSE 0 END) AS total_views,
-            SUM(CASE WHEN action_type = 'ADD_CART' THEN 1 ELSE 0 END) AS total_cart_adds,
-            SUM(CASE WHEN action_type = 'PURCHASE' THEN 1 ELSE 0 END) AS total_purchases,
-            SUM(CASE WHEN action_type = 'REVIEW' THEN 1 ELSE 0 END) AS total_reviews,
-            MAX(created_at) AS last_active_at
-        FROM user_activity_logs
-        GROUP BY customer_id
-    ) act ON cs.customer_id = act.customer_id
     SET 
-        cs.total_views = COALESCE(act.total_views, 0),
-        cs.total_cart_adds = COALESCE(act.total_cart_adds, 0),
-        cs.total_purchases = COALESCE(act.total_purchases, cs.frequency),
-        cs.total_reviews = COALESCE(act.total_reviews, 0),
-        cs.last_active_at = act.last_active_at;
+        cs.total_views = COALESCE((
+            SELECT COUNT(*) 
+            FROM user_activity_logs 
+            WHERE customer_id = cs.customer_id AND action_type = 'VIEW_PRODUCT'
+        ), 0),
+        cs.total_cart_adds = COALESCE((
+            SELECT COUNT(*) 
+            FROM user_activity_logs 
+            WHERE customer_id = cs.customer_id AND action_type = 'ADD_CART'
+        ), 0),
+        cs.total_purchases = COALESCE((
+            SELECT COUNT(*) 
+            FROM user_activity_logs 
+            WHERE customer_id = cs.customer_id AND action_type = 'PURCHASE'
+        ), cs.frequency),
+        cs.total_reviews = COALESCE((
+            SELECT COUNT(*) 
+            FROM user_activity_logs 
+            WHERE customer_id = cs.customer_id AND action_type = 'REVIEW'
+        ), 0),
+        cs.last_active_at = (
+            SELECT MAX(created_at) 
+            FROM user_activity_logs 
+            WHERE customer_id = cs.customer_id
+        );
 
     DROP TEMPORARY TABLE IF EXISTS tmp_rfm_scores;
 END$$

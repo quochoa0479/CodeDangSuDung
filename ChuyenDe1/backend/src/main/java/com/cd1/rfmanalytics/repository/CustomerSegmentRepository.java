@@ -18,13 +18,13 @@ public interface CustomerSegmentRepository extends JpaRepository<CustomerSegment
 
     Page<CustomerSegment> findBySegment(String segment, Pageable pageable);
 
-    @Query("SELECT cs FROM CustomerSegment cs JOIN cs.customer c WHERE " +
+    @Query("SELECT cs FROM CustomerSegment cs WHERE " +
            "(:segment IS NULL OR :segment = '' OR :segment = 'ALL' OR cs.segment = :segment) AND " +
            "(:keyword IS NULL OR :keyword = '' OR " +
-           "LOWER(c.fullName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-           "LOWER(c.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-           "LOWER(c.customerCode) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-           "c.phone LIKE CONCAT('%', :keyword, '%'))")
+           "LOWER(cs.customer.fullName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(cs.customer.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(cs.customer.customerCode) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "cs.customer.phone LIKE CONCAT('%', :keyword, '%'))")
     Page<CustomerSegment> findBySegmentAndKeyword(
             @org.springframework.data.repository.query.Param("segment") String segment,
             @org.springframework.data.repository.query.Param("keyword") String keyword,
