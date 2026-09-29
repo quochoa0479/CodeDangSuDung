@@ -1,0 +1,203 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap');
+
+:root {
+  --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Outfit', sans-serif;
+
+  /* Enterprise Slate Dark Palette */
+  --bg-primary: #0B0F19;
+  --bg-secondary: #0F172A;
+  --bg-card: #131B2E;
+  --bg-card-hover: #182238;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.15);
+  --border-focus: #3B82F6;
+
+  /* Professional Accents */
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --accent-blue: #38BDF8;
+  --accent-emerald: #10B981;
+  --accent-amber: #F59E0B;
+  --accent-rose: #EF4444;
+
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* High-Performance Cards (Zero backdrop-filter to prevent 60fps scroll lag) */
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* Professional Clean Heading */
+.clean-title {
+  color: #FFFFFF;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Pulse Badge (Clean & Subtle, no heavy neon) */
+.pulse-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Slim Modern Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0F19;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Ant Design Dark Mode Refinements */
+.ant-layout {
+  background: var(--bg-primary) !important;
+}
+
+.ant-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  border-radius: 12px !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  min-height: 48px !important;
+  padding: 0 18px !important;
+}
+
+.ant-card-body {
+  padding: 18px !important;
+}
+
+.ant-table {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+
+.ant-table-thead > tr > th {
+  background: #0F172A !important;
+  color: var(--text-secondary) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  font-weight: 600 !important;
+  font-size: 11px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 14px !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  padding: 12px 14px !important;
+  background: #131B2E !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #1A243B !important;
+}
+
+/* Explicit styling for sticky fixed columns to prevent bleed-through overlap */
+.ant-table-cell-fix-left,
+.ant-table-cell-fix-right {
+  background: #131B2E !important;
+}
+
+.ant-table-tbody > tr:hover > td.ant-table-cell-fix-left,
+.ant-table-tbody > tr:hover > td.ant-table-cell-fix-right {
+  background: #1A243B !important;
+}
+
+.ant-table-thead > tr > th.ant-table-cell-fix-left,
+.ant-table-thead > tr > th.ant-table-cell-fix-right {
+  background: #0F172A !important;
+}
+
+.ant-pagination-item-active {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+}
+
+.ant-pagination-item-active a {
+  color: #fff !important;
+}
+
+.ant-btn-primary {
+  background: #2563EB !important;
+  border: 1px solid #3B82F6 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+}
+
+.ant-btn-primary:hover {
+  background: #1D4ED8 !important;
+  border-color: #2563EB !important;
+}
+
+/* Subtle Fade-in without layout shift */
+.animate-fade-up {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
