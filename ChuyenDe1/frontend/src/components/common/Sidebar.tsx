@@ -11,6 +11,8 @@ import {
   AlertOutlined,
 } from '@ant-design/icons';
 
+import { useAuthStore } from '../../store/authStore';
+
 const { Sider } = Layout;
 
 interface SidebarProps {
@@ -32,6 +34,9 @@ interface NavGroup {
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onCollapse }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+
+  const isAdmin = user?.role === 'ADMIN';
 
   const navGroups: NavGroup[] = [
     {
@@ -59,21 +64,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onCollapse }) => {
         },
       ],
     },
-    {
-      groupTitle: 'QUẢN TRỊ DỮ LIỆU',
-      items: [
-        {
-          key: '/import',
-          label: 'Import Dữ liệu CSV',
-          icon: <CloudUploadOutlined />,
-        },
-        {
-          key: '/import/mappings',
-          label: 'Cấu hình Ánh xạ',
-          icon: <SettingOutlined />,
-        },
-      ],
-    },
+    // Only Admin can see Data Management menu
+    ...(isAdmin
+      ? [
+          {
+            groupTitle: 'QUẢN TRỊ DỮ LIỆU (ADMIN)',
+            items: [
+              {
+                key: '/import',
+                label: 'Import Dữ liệu CSV',
+                icon: <CloudUploadOutlined />,
+              },
+              {
+                key: '/import/mappings',
+                label: 'Cấu hình Ánh xạ',
+                icon: <SettingOutlined />,
+              },
+            ],
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -254,8 +264,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onCollapse }) => {
             justifyContent: 'space-between',
           }}
         >
-          <span>v1.0 Enterprise</span>
-          <span style={{ color: '#475569' }}>CĐ1</span>
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              background: isAdmin ? 'rgba(37, 99, 235, 0.15)' : 'rgba(147, 51, 234, 0.15)',
+              color: isAdmin ? '#60A5FA' : '#C084FC',
+              border: `1px solid ${isAdmin ? 'rgba(37, 99, 235, 0.3)' : 'rgba(147, 51, 234, 0.3)'}`,
+            }}
+          >
+            {isAdmin ? 'ADMIN' : 'ANALYST'}
+          </span>
+          <span style={{ color: '#475569' }}>CĐ1 Enterprise</span>
         </div>
       )}
     </Sider>

@@ -1,35 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Card, message } from 'antd';
-import { UserOutlined, LockOutlined, RocketFilled, SafetyCertificateOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, RocketFilled } from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const { login, isAuthenticated } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
+
+  // Redirect to dashboard immediately if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (isAuthenticated && token) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleFinish = async (values: any) => {
     setLoading(true);
     try {
       await login(values);
       message.success('Đăng nhập thành công!');
-      navigate('/');
+      navigate('/', { replace: true });
     } catch (err: any) {
       message.error(err.message || 'Tài khoản hoặc mật khẩu không chính xác');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickLogin = (role: 'admin' | 'analyst') => {
-    const creds = role === 'admin'
-      ? { username: 'admin', password: 'admin123' }
-      : { username: 'analyst', password: 'analyst123' };
-
-    form.setFieldsValue(creds);
-    handleFinish(creds);
   };
 
   return (
@@ -40,74 +39,48 @@ export const LoginPage: React.FC = () => {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '20px',
-        position: 'relative',
-        overflow: 'hidden',
+        background: '#0B0F19',
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          width: '500px',
-          height: '500px',
-          background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%)',
-          top: '10%',
-          left: '20%',
-          filter: 'blur(40px)',
-          zIndex: 0,
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          width: '400px',
-          height: '400px',
-          background: 'radial-gradient(circle, rgba(236, 72, 153, 0.15) 0%, transparent 70%)',
-          bottom: '15%',
-          right: '25%',
-          filter: 'blur(40px)',
-          zIndex: 0,
-        }}
-      />
-
       <Card
         className="glass-card animate-fade-up"
         style={{
           width: '100%',
-          maxWidth: '460px',
+          maxWidth: '440px',
           padding: '24px 16px',
-          zIndex: 1,
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+          borderRadius: '12px',
         }}
       >
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div
             style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '16px',
-              background: 'var(--primary-gradient)',
+              width: '50px',
+              height: '50px',
+              borderRadius: '12px',
+              background: '#2563EB',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: '#FFFFFF',
-              fontSize: '28px',
+              fontSize: '24px',
               marginBottom: '16px',
-              boxShadow: '0 0 25px rgba(99, 102, 241, 0.5)',
             }}
           >
             <RocketFilled />
           </div>
           <h1
             style={{
-              fontSize: '26px',
+              fontSize: '24px',
               fontWeight: 800,
               fontFamily: 'var(--font-display)',
               marginBottom: '6px',
               letterSpacing: '-0.02em',
+              color: '#FFFFFF',
             }}
           >
-            <span className="gradient-text">RFM Analytics</span>
+            RFM Analytics
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
             Hệ thống Phân loại Khách hàng theo Hành vi (CĐ1)
@@ -122,7 +95,7 @@ export const LoginPage: React.FC = () => {
           >
             <Input
               prefix={<UserOutlined style={{ color: 'var(--text-muted)' }} />}
-              placeholder="admin hoặc analyst"
+              placeholder="Tên đăng nhập (username)"
               size="large"
               style={{ borderRadius: '10px', height: '46px' }}
             />
@@ -135,7 +108,7 @@ export const LoginPage: React.FC = () => {
           >
             <Input.Password
               prefix={<LockOutlined style={{ color: 'var(--text-muted)' }} />}
-              placeholder="Mật khẩu"
+              placeholder="Mật khẩu (password)"
               size="large"
               style={{ borderRadius: '10px', height: '46px' }}
             />
@@ -157,30 +130,6 @@ export const LoginPage: React.FC = () => {
             Đăng nhập hệ thống
           </Button>
         </Form>
-
-        <div style={{ marginTop: '28px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '20px' }}>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '12px' }}>
-            ⚡ Tài khoản Demo 1-Click:
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <Button
-              ghost
-              icon={<SafetyCertificateOutlined />}
-              onClick={() => handleQuickLogin('admin')}
-              style={{ borderRadius: '8px', fontSize: '12px', borderColor: 'rgba(99, 102, 241, 0.4)', color: '#A5B4FC' }}
-            >
-              Admin (admin)
-            </Button>
-            <Button
-              ghost
-              icon={<UserOutlined />}
-              onClick={() => handleQuickLogin('analyst')}
-              style={{ borderRadius: '8px', fontSize: '12px', borderColor: 'rgba(236, 72, 153, 0.4)', color: '#F472B6' }}
-            >
-              Analyst (analyst)
-            </Button>
-          </div>
-        </div>
       </Card>
     </div>
   );

@@ -27,10 +27,10 @@ public class AnalyticsService {
         List<Map<String, Object>> distribution = segmentRepository.countCustomersBySegment();
         List<Map<String, Object>> vrfm = segmentRepository.getVrfmSummary();
 
-        long totalCustomers = summary.get("totalCustomers") != null ? ((Number) summary.get("totalCustomers")).longValue() : 0;
-        long totalOrders = summary.get("totalOrders") != null ? ((Number) summary.get("totalOrders")).longValue() : 0;
-        BigDecimal totalRevenue = summary.get("totalRevenue") != null ? new BigDecimal(summary.get("totalRevenue").toString()) : BigDecimal.ZERO;
-        BigDecimal avgSpend = summary.get("avgSpendPerCustomer") != null ? new BigDecimal(summary.get("avgSpendPerCustomer").toString()) : BigDecimal.ZERO;
+        long totalCustomers = (summary != null && summary.get("totalCustomers") != null) ? ((Number) summary.get("totalCustomers")).longValue() : 0;
+        long totalOrders = (summary != null && summary.get("totalOrders") != null) ? ((Number) summary.get("totalOrders")).longValue() : 0;
+        BigDecimal totalRevenue = (summary != null && summary.get("totalRevenue") != null) ? new BigDecimal(summary.get("totalRevenue").toString()) : BigDecimal.ZERO;
+        BigDecimal avgSpend = (summary != null && summary.get("avgSpendPerCustomer") != null) ? new BigDecimal(summary.get("avgSpendPerCustomer").toString()) : BigDecimal.ZERO;
 
         Long churnRiskCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM v_churn_risk_customers", Long.class);
 

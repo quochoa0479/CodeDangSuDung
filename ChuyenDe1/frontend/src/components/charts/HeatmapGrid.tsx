@@ -123,14 +123,14 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({ matrix, onCellClick })
                       }}
                       onMouseEnter={(e) => {
                         if (count > 0) {
-                          e.currentTarget.style.transform = 'scale(1.05)';
-                          e.currentTarget.style.boxShadow = `0 0 15px ${meta.color}80`;
+                          e.currentTarget.style.transform = 'scale(1.04)';
+                          e.currentTarget.style.borderColor = meta.color;
                           e.currentTarget.style.zIndex = '10';
                         }
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'scale(1)';
-                        e.currentTarget.style.boxShadow = 'none';
+                        e.currentTarget.style.borderColor = count > 0 ? `${meta.borderColor}80` : 'rgba(255, 255, 255, 0.04)';
                         e.currentTarget.style.zIndex = '1';
                       }}
                     >

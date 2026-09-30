@@ -293,7 +293,7 @@ export const CustomerDetailPage: React.FC = () => {
                   fontSize: '32px',
                   fontWeight: 800,
                   color: '#FFFFFF',
-                  boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
                   flexShrink: 0,
                 }}
               >
