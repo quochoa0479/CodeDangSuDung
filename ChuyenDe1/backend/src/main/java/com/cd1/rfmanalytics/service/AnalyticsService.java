@@ -14,9 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
-@Service
-@RequiredArgsConstructor
+@Slf4j // Ghi log lỗi / thông tin ra terminal 
+@Service 
+@RequiredArgsConstructor // Tự động tạo constructor với các field final
 public class AnalyticsService {
 
     private final CustomerSegmentRepository segmentRepository;

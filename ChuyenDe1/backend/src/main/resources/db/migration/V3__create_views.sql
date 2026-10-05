@@ -1,17 +1,14 @@
--- =====================================================================
--- V3__create_views.sql
--- Khai thác CSDL: 5 Views phục vụ báo cáo và phân tích thông minh
--- (Sử dụng hoàn toàn cú pháp SELECT FROM WHERE, không dùng mệnh đề JOIN)
--- =====================================================================
 
 -- View 1: v_rfm_summary - Thống kê tổng quan các phân khúc khách hàng
 CREATE OR REPLACE VIEW v_rfm_summary AS
 SELECT 
     cs.segment,
     COUNT(cs.id) AS total_customers,
+    -- Round dùng để làm tròn
+    -- nullif(A,B)  Nếu A = B trả về NULL, ngược lại trả về A.
     ROUND(COUNT(cs.id) * 100.0 / NULLIF((SELECT COUNT(*) FROM customer_segments), 0), 2) AS percentage,
     ROUND(AVG(cs.recency_days), 1) AS avg_recency_days,
-    ROUND(AVG(cs.frequency), 1) AS avg_orders,
+    ROUND(AVG(cs.frequency), 1) AS avg_orders,  
     ROUND(AVG(cs.monetary), 0) AS avg_monetary,
     ROUND(SUM(cs.monetary), 0) AS total_revenue,
     ROUND(AVG(cs.rfm_total), 2) AS avg_rfm_score
@@ -19,7 +16,6 @@ FROM customer_segments cs
 GROUP BY cs.segment;
 
 -- View 2: v_customer_360 - Chân dung toàn diện khách hàng (Thông tin + RFM + Hành vi)
--- Sử dụng liên kết bảng qua mệnh đề WHERE (không dùng JOIN)
 CREATE OR REPLACE VIEW v_customer_360 AS
 SELECT 
     c.id AS customer_id,
@@ -46,7 +42,6 @@ FROM customers c, customer_segments cs
 WHERE c.id = cs.customer_id;
 
 -- View 3: v_churn_risk_customers - Cảnh báo khách hàng nguy cơ rời bỏ
--- Sử dụng liên kết bảng qua mệnh đề WHERE (không dùng JOIN)
 CREATE OR REPLACE VIEW v_churn_risk_customers AS
 SELECT 
     c.id AS customer_id,
@@ -65,7 +60,6 @@ WHERE cs.customer_id = c.id
        OR (cs.r_score <= 2 AND cs.monetary > 5000000));
 
 -- View 4: v_category_preference - Danh mục yêu thích và doanh thu theo phân khúc
--- Sử dụng liên kết đa bảng qua mệnh đề WHERE (không dùng JOIN)
 CREATE OR REPLACE VIEW v_category_preference AS
 SELECT 
     cs.segment,

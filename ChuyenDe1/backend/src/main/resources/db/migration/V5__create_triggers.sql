@@ -1,9 +1,4 @@
--- =====================================================================
--- V5__create_triggers.sql
--- Khai thác CSDL: Triggers tự động theo dõi và lưu vết chuyển dịch phân khúc
--- =====================================================================
 
-DELIMITER $$
 
 DROP TRIGGER IF EXISTS trg_track_segment_change$$
 CREATE TRIGGER trg_track_segment_change

@@ -34,7 +34,7 @@ public class ImportController {
             CsvPreviewDto preview = csvImportService.previewCsv(file, targetTable);
             return ApiResponse.ok("Preview generated successfully", preview);
         } catch (Exception e) {
-            return ApiResponse.error("Failed to read CSV file: " + e.getMessage());
+            return ApiResponse.error("Failed to read file: " + e.getMessage());
         }
     }
 

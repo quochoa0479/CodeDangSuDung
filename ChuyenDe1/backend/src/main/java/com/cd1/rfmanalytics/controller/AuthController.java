@@ -15,7 +15,7 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/login")
+    @PostMapping({"/login", ""})
     public ApiResponse<LoginResponseDto> login(@Valid @RequestBody LoginRequestDto request) {
         try {
             LoginResponseDto response = authService.login(request);
@@ -25,7 +25,7 @@ public class AuthController {
         }
     }
 
-    @GetMapping("/me")
+    @GetMapping({"/me", ""})
     public ApiResponse<LoginResponseDto> getMe(@RequestParam(defaultValue = "admin") String username) {
         try {
             return ApiResponse.ok(authService.getCurrentUser(username));

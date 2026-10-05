@@ -1,16 +1,10 @@
--- =====================================================================
--- V4__create_procedures_and_functions.sql
--- Khai thác CSDL: Stored Procedures & Functions thực thi thuật toán RFM
--- (Sử dụng hoàn toàn cú pháp SELECT FROM WHERE, không dùng mệnh đề JOIN)
--- =====================================================================
 
-DELIMITER $$
 
 -- Function 1: Phân loại phân khúc kinh doanh từ bộ điểm R, F, M
 DROP FUNCTION IF EXISTS fn_classify_segment$$
 CREATE FUNCTION fn_classify_segment(r INT, f INT, m INT)
 RETURNS VARCHAR(50)
-DETERMINISTIC
+DETERMINISTIC  -- Deterministic là hàm luôn trả về 1 giá trị duy nhất ứng với đầu vào
 BEGIN
     DECLARE seg VARCHAR(50);
     

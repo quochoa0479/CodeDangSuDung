@@ -206,7 +206,6 @@ export const DashboardPage: React.FC = () => {
           <Card
             className="glass-card"
             title="Xu hướng doanh thu theo tháng (Cohorts)"
-            extra={<span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Dữ liệu từ View v_monthly_revenue_cohort</span>}
           >
             <MonthlyRevenueChart data={data.monthlyTrends || []} />
           </Card>
@@ -218,7 +217,7 @@ export const DashboardPage: React.FC = () => {
         <Col xs={24} lg={15}>
           <Card
             className="glass-card"
-            title="Bảng thống kê chi tiết từng phân khúc (View: v_rfm_summary)"
+            title="Bảng thống kê chi tiết từng phân khúc"
           >
             <Table
               dataSource={data.vrfmSummary || []}
@@ -233,7 +232,6 @@ export const DashboardPage: React.FC = () => {
           <Card
             className="glass-card"
             title="Danh mục bán chạy theo phân khúc"
-            extra={<span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>View: v_category_preference</span>}
           >
             <CategoryBarChart data={data.topCategoryPreferences || []} />
           </Card>

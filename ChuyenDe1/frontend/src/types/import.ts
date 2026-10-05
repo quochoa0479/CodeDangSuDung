@@ -5,7 +5,10 @@ export interface CsvPreview {
   headers: string[];
   sampleRows: Record<string, string>[];
   targetFields: string[];
+  fileFormat?: string; // 'CSV' | 'EXCEL' | 'JSON' | 'XML'
 }
+
+export type FilePreview = CsvPreview;
 
 export interface ImportRequest {
   fileId: string;

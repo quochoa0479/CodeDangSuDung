@@ -1,7 +1,4 @@
--- =====================================================================
--- V1__create_tables.sql
--- Hệ Thống Phân Tích & Phân Loại Khách Hàng Theo Hành Vi (RFM Analytics)
--- =====================================================================
+
 
 -- Nhóm 1: Bảng Dữ Liệu Bán Hàng (6 bảng)
 CREATE TABLE IF NOT EXISTS categories (

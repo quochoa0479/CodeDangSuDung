@@ -24,6 +24,9 @@ import {
   HistoryOutlined,
   ThunderboltOutlined,
   ReloadOutlined,
+  FileExcelOutlined,
+  FileTextOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import { importApi } from '../api/importApi';
 import { segmentApi } from '../api/segmentApi';
@@ -105,30 +108,38 @@ export const ImportPage: React.FC = () => {
     }
   };
 
-  // Step 2: Upload & Preview CSV
+  // Step 2: Upload & Preview File (Excel, JSON, XML, CSV)
   const handleFileUpload = async (file: File) => {
     setUploading(true);
     try {
-      const res = await importApi.previewCsv(file, targetTable);
+      const res = await importApi.previewFile(file, targetTable);
       if (res.success && res.data) {
         setPreviewData(res.data);
-        message.success(`Đã phân tích tệp CSV: ${res.data.totalRows} dòng dữ liệu`);
-        // Auto-match headers to target fields
+        const formatLabel = res.data.fileFormat || 'dữ liệu';
+        message.success(`Đã phân tích tệp ${formatLabel} (${res.data.fileName}): ${res.data.totalRows} dòng dữ liệu`);
+
+        // Smart auto-match headers to target fields (case-insensitive & snake/camel agnostic)
         const initialMapping: Record<string, string> = {};
         res.data.targetFields.forEach((field) => {
-          const matchedHeader = res.data.headers.find(
-            (h) =>
+          const normField = field.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const matchedHeader = res.data.headers.find((h) => {
+            const normHeader = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return (
               h.toLowerCase().trim() === field.toLowerCase().trim() ||
-              h.toLowerCase().replace(/_/g, '') === field.toLowerCase().replace(/_/g, '')
-          );
+              normHeader === normField ||
+              normHeader.includes(normField) ||
+              normField.includes(normHeader)
+            );
+          });
           if (matchedHeader) {
             initialMapping[field] = matchedHeader;
           }
         });
+
         mappingForm.setFieldsValue(initialMapping);
         setCurrentStep(1); // Advance to preview & mapping step
       } else {
-        message.error(res.message || 'Không thể xem trước tệp CSV');
+        message.error(res.message || 'Không thể xem trước tệp dữ liệu');
       }
     } catch (err: any) {
       message.error(err.message || 'Lỗi khi gửi tệp lên máy chủ');
@@ -202,7 +213,6 @@ export const ImportPage: React.FC = () => {
 
   const ModalConfirm = (data: any) => {
     message.success(`Đã tạo thành công ${data.createdCustomers} KH, ${data.createdOrders} đơn hàng và ${data.createdActivities} nhật ký hoạt động!`);
-    // Trigger RFM recalculate right after
     segmentApi.recalculate();
   };
 
@@ -213,6 +223,20 @@ export const ImportPage: React.FC = () => {
     setSaveAsTemplate(false);
     setTemplateName('');
     mappingForm.resetFields();
+  };
+
+  const getFormatBadge = (format?: string) => {
+    const f = (format || '').toUpperCase();
+    if (f === 'EXCEL') {
+      return <Tag color="green" icon={<FileExcelOutlined />}>Excel (.xlsx / .xls)</Tag>;
+    }
+    if (f === 'JSON') {
+      return <Tag color="gold" icon={<CodeOutlined />}>JSON (.json)</Tag>;
+    }
+    if (f === 'XML') {
+      return <Tag color="purple" icon={<CodeOutlined />}>XML (.xml)</Tag>;
+    }
+    return <Tag color="blue" icon={<FileTextOutlined />}>CSV (.csv)</Tag>;
   };
 
   const historyColumns = [
@@ -230,19 +254,35 @@ export const ImportPage: React.FC = () => {
       render: (t: string) => <Tag color="geekblue">{t}</Tag>,
     },
     {
-      title: 'Nguồn',
+      title: 'Nguồn định dạng',
       dataIndex: 'source',
       key: 'source',
-      render: (s: string) => <span style={{ color: '#E2E8F0' }}>{s}</span>,
+      render: (s: string) => {
+        const upper = (s || '').toUpperCase();
+        if (upper === 'EXCEL') return <Tag color="green">EXCEL</Tag>;
+        if (upper === 'JSON') return <Tag color="gold">JSON</Tag>;
+        if (upper === 'XML') return <Tag color="purple">XML</Tag>;
+        if (upper === 'CSV') return <Tag color="blue">CSV</Tag>;
+        if (upper === 'GENERATED') return <Tag color="orange">SINH DỮ LIỆU</Tag>;
+        return <Tag color="default">{s}</Tag>;
+      },
     },
     {
-      title: 'Số bản ghi nhập',
+      title: 'Số bản ghi nhập mới',
       dataIndex: 'recordsImported',
       key: 'recordsImported',
       render: (num: number) => <strong style={{ color: '#10B981' }}>+{formatNumber(num)}</strong>,
     },
     {
-      title: 'Số bản ghi lỗi',
+      title: 'Cập nhật',
+      dataIndex: 'recordsUpdated',
+      key: 'recordsUpdated',
+      render: (num: number) => (
+        <span style={{ color: num > 0 ? '#38BDF8' : '#64748B' }}>{formatNumber(num || 0)}</span>
+      ),
+    },
+    {
+      title: 'Lỗi / Bỏ qua',
       dataIndex: 'recordsFailed',
       key: 'recordsFailed',
       render: (num: number) => (
@@ -280,10 +320,10 @@ export const ImportPage: React.FC = () => {
             marginBottom: '4px',
           }}
         >
-          Nhập & Đồng Bộ Dữ Liệu Khách Hàng
+          Nhập & Đồng Bộ Dữ Liệu Đa Nguồn
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-          Tải lên tệp CSV từ Shopee, Tiki, Lazada hoặc hệ thống ERP nội bộ kèm ánh xạ cột tự động
+          Hỗ trợ nạp dữ liệu từ các tệp Excel (.xlsx, .xls), JSON (.json), XML (.xml) và CSV (.csv) với cơ chế tự động nhận diện và ánh xạ cột thông minh
         </p>
       </div>
 
@@ -295,7 +335,7 @@ export const ImportPage: React.FC = () => {
             key: 'wizard',
             label: (
               <span>
-                <CloudUploadOutlined /> Trình Import CSV Thông Minh
+                <CloudUploadOutlined /> Trình Nạp Dữ Liệu Thông Minh
               </span>
             ),
             children: (
@@ -305,15 +345,15 @@ export const ImportPage: React.FC = () => {
                   style={{ marginBottom: '36px' }}
                   items={[
                     { title: 'Chọn bảng đích' },
-                    { title: 'Tải & Xem trước CSV' },
+                    { title: 'Tải & Xem trước tệp' },
                     { title: 'Ánh xạ cột dữ liệu' },
                     { title: 'Kết quả hoàn tất' },
                   ]}
                 />
 
-                {/* STEP 0: Chọn bảng đích */}
+                {/* STEP 0: Chọn bảng đích & Upload */}
                 {currentStep === 0 && (
-                  <div style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center' }}>
+                  <div style={{ maxWidth: '640px', margin: '0 auto', textAlign: 'center' }}>
                     <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '16px' }}>
                       Bước 1: Chọn bảng dữ liệu cần nhập vào hệ thống
                     </h3>
@@ -331,41 +371,60 @@ export const ImportPage: React.FC = () => {
                       ))}
                     </Select>
 
-                    <div style={{ marginTop: '30px' }}>
+                    <div style={{ marginTop: '20px' }}>
                       <Dragger
-                        accept=".csv"
+                        accept=".csv, .xlsx, .xls, .json, .xml, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, application/json, text/xml, text/csv"
                         beforeUpload={handleFileUpload}
                         showUploadList={false}
                         disabled={uploading}
                         style={{
                           background: 'rgba(255, 255, 255, 0.02)',
-                          borderColor: 'rgba(255, 255, 255, 0.15)',
-                          padding: '30px 20px',
-                          borderRadius: '12px',
+                          borderColor: 'rgba(99, 102, 241, 0.3)',
+                          padding: '36px 20px',
+                          borderRadius: '14px',
                         }}
                       >
                         <p className="ant-upload-drag-icon">
-                          <InboxOutlined style={{ color: '#6366F1', fontSize: '48px' }} />
+                          <InboxOutlined style={{ color: '#6366F1', fontSize: '52px' }} />
                         </p>
-                        <p className="ant-upload-text" style={{ color: '#FFFFFF', fontWeight: 600 }}>
-                          Kéo thả tệp CSV vào đây hoặc nhấp để chọn tệp
+                        <p className="ant-upload-text" style={{ color: '#FFFFFF', fontWeight: 700, fontSize: '16px' }}>
+                          Kéo thả tệp dữ liệu vào đây hoặc nhấp để chọn tệp
                         </p>
-                        <p className="ant-upload-hint" style={{ color: '#94A3B8', fontSize: '12px' }}>
-                          Hỗ trợ định dạng CSV chuẩn UTF-8 (Shopee, Tiki, Sapo, Haravan, KiotViet, ...)
+                        <p className="ant-upload-hint" style={{ color: '#94A3B8', fontSize: '13px', margin: '8px 0 16px' }}>
+                          Tự động nhận diện cấu trúc, tiêu đề và làm sạch dữ liệu
                         </p>
+
+                        {/* Format badges */}
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <Tag color="green" icon={<FileExcelOutlined />} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                            Excel (.xlsx, .xls)
+                          </Tag>
+                          <Tag color="blue" icon={<FileTextOutlined />} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                            CSV (.csv)
+                          </Tag>
+                          <Tag color="gold" icon={<CodeOutlined />} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                            JSON (.json)
+                          </Tag>
+                          <Tag color="purple" icon={<CodeOutlined />} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                            XML (.xml)
+                          </Tag>
+                        </div>
                       </Dragger>
                     </div>
                   </div>
                 )}
 
-                {/* STEP 1: Xem trước dữ liệu CSV */}
+                {/* STEP 1: Xem trước dữ liệu */}
                 {currentStep === 1 && previewData && (
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
                       <div>
-                        <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>
-                          Bước 2: Xem trước tệp CSV ({previewData.fileName})
-                        </h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                          <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>
+                            Bước 2: Xem trước tệp dữ liệu ({previewData.fileName})
+                          </h3>
+                          {getFormatBadge(previewData.fileFormat)}
+                        </div>
                         <span style={{ color: '#94A3B8', fontSize: '12px' }}>
                           Tổng số dòng: <strong>{formatNumber(previewData.totalRows)}</strong> • Cột phát hiện: <strong>{previewData.headers.length}</strong>
                         </span>
@@ -400,11 +459,14 @@ export const ImportPage: React.FC = () => {
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                       <div>
-                        <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>
-                          Bước 3: Cấu hình ánh xạ cột cho bảng "{targetTable}"
-                        </h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                          <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>
+                            Bước 3: Cấu hình ánh xạ cột cho bảng "{targetTable}"
+                          </h3>
+                          {getFormatBadge(previewData.fileFormat)}
+                        </div>
                         <span style={{ color: '#94A3B8', fontSize: '12px' }}>
-                          Chọn cột trong tệp CSV tương ứng với trường dữ liệu trong cơ sở dữ liệu
+                          Chọn cột / trường từ tệp {previewData.fileFormat || 'dữ liệu'} tương ứng với từng trường trong cơ sở dữ liệu
                         </span>
                       </div>
 
@@ -441,7 +503,7 @@ export const ImportPage: React.FC = () => {
                               }
                               name={field}
                             >
-                              <Select placeholder="Chọn cột từ CSV (hoặc bỏ trống)" allowClear>
+                              <Select placeholder="Chọn cột từ tệp (hoặc bỏ trống)" allowClear>
                                 {previewData.headers.map((h) => (
                                   <Select.Option key={h} value={h}>
                                     📄 {h}
@@ -502,7 +564,7 @@ export const ImportPage: React.FC = () => {
                   <Result
                     status="success"
                     title="Nhập Dữ Liệu Thành Công!"
-                    subTitle={`Lô import #${importResult.id} vào bảng ${importResult.tableName} đã xử lý xong.`}
+                    subTitle={`Lô import #${importResult.id} (Nguồn: ${importResult.source}) vào bảng ${importResult.tableName} đã xử lý xong.`}
                     extra={[
                       <div
                         key="stats"
@@ -516,15 +578,15 @@ export const ImportPage: React.FC = () => {
                         }}
                       >
                         <div>
-                          <div style={{ color: '#94A3B8', fontSize: '12px' }}>Thành công</div>
+                          <div style={{ color: '#94A3B8', fontSize: '12px' }}>Tạo mới</div>
                           <div style={{ fontSize: '20px', fontWeight: 800, color: '#10B981' }}>
-                            {formatNumber(importResult.recordsImported)}
+                            +{formatNumber(importResult.recordsImported)}
                           </div>
                         </div>
                         <div>
                           <div style={{ color: '#94A3B8', fontSize: '12px' }}>Cập nhật</div>
                           <div style={{ fontSize: '20px', fontWeight: 800, color: '#38BDF8' }}>
-                            {formatNumber(importResult.recordsUpdated)}
+                            {formatNumber(importResult.recordsUpdated || 0)}
                           </div>
                         </div>
                         <div>
@@ -645,3 +707,4 @@ export const ImportPage: React.FC = () => {
     </div>
   );
 };
+export default ImportPage;

@@ -72,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onCollapse }) => {
             items: [
               {
                 key: '/import',
-                label: 'Import Dữ liệu CSV',
+                label: 'Nhập Dữ Liệu',
                 icon: <CloudUploadOutlined />,
               },
               {
@@ -193,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onCollapse }) => {
                 const isActive =
                   item.key === '/'
                     ? location.pathname === '/'
-                    : location.pathname.startsWith(item.key);
+                    : location.pathname === item.key;
 
                 return (
                   <div

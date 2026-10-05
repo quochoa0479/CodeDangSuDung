@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<customers>
+  <customer>
+    <customer_code>KH9101</customer_code>
+    <full_name>Phạm Đức Dũng</full_name>
+    <email>dung.pham9101@gmail.com</email>
+    <phone>0945678901</phone>
+    <gender>Nam</gender>
+    <city>Hải Phòng</city>
+  </customer>
+  <customer>
+    <customer_code>KH9102</customer_code>
+    <full_name>Hoàng Thị Mai</full_name>
+    <email>mai.hoang9102@gmail.com</email>
+    <phone>0956789012</phone>
+    <gender>Nữ</gender>
+    <city>Cần Thơ</city>
+  </customer>
+  <customer customer_code="KH9103" full_name="Võ Minh Quân" email="quan.vo9103@gmail.com" phone="0967890123" gender="Nam" city="Bình Dương" />
+</customers>

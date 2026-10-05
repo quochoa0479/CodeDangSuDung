@@ -15,6 +15,10 @@ export const importApi = {
     });
   },
 
+  previewFile: (file: File, targetTable = 'customers'): Promise<ApiResponse<CsvPreview>> => {
+    return importApi.previewCsv(file, targetTable);
+  },
+
   executeImport: (data: ImportRequest): Promise<ApiResponse<ImportLog>> => {
     return axiosClient.post('/import/execute', data);
   },

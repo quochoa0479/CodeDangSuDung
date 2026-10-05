@@ -1,7 +1,4 @@
--- =====================================================================
--- V2__create_indexes.sql
--- Tối ưu hóa hiệu năng truy vấn (Index Optimization cho CĐ1)
--- =====================================================================
+
 
 -- 1. Tối ưu hóa truy vấn tính toán RFM trên bảng orders:
 CREATE INDEX idx_orders_customer_rfm ON orders (customer_id, order_status, order_date, total_amount);

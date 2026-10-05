@@ -1,9 +1,4 @@
--- =====================================================================
--- V6__create_events.sql
--- Khai thác CSDL: MySQL Event tự động chạy tính toán RFM định kỳ
--- =====================================================================
 
--- Bật Event Scheduler nếu chưa bật
 SET GLOBAL event_scheduler = ON;
 
 DELIMITER $$

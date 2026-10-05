@@ -276,7 +276,7 @@ export const ReportsPage: React.FC = () => {
             Báo Cáo & Phân Tích Chuyên Sâu
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-            Truy xuất dữ liệu trực tiếp từ các Database View: v_churn_risk_customers, v_monthly_revenue_cohort, v_category_preference
+            Báo cáo tổng hợp số liệu phân tích rủi ro rời bỏ, xu hướng doanh thu và thị hiếu danh mục khách hàng
           </p>
         </div>
 
@@ -304,7 +304,7 @@ export const ReportsPage: React.FC = () => {
                   type="warning"
                   showIcon
                   message="Danh sách khách hàng đang có dấu hiệu giảm sút tương tác hoặc ngừng mua sắm"
-                  description="Dữ liệu tổng hợp từ View `v_churn_risk_customers`. Đây là những khách hàng đã lâu chưa quay lại (> 60 ngày) hoặc thuộc các phân khúc có nguy cơ mất khách (Can't Lose Them, At Risk, About To Sleep). Hãy triển khai chiến dịch kích hoạt lại kịp thời."
+                  description="Danh sách những khách hàng đã lâu chưa quay lại (> 60 ngày) hoặc thuộc các phân khúc có nguy cơ mất khách (Can't Lose Them, At Risk, About To Sleep). Hãy triển khai chiến dịch kích hoạt lại kịp thời."
                   style={{ marginBottom: '20px' }}
                 />
 
@@ -341,7 +341,7 @@ export const ReportsPage: React.FC = () => {
                   <MonthlyRevenueChart data={revenueTrends} />
                 </Card>
 
-                <Card className="glass-card" title="Bảng thống kê chi tiết theo tháng (View: v_monthly_revenue_cohort)">
+                <Card className="glass-card" title="Bảng thống kê chi tiết theo tháng">
                   <Table
                     dataSource={revenueTrends}
                     columns={revenueColumns}
@@ -369,7 +369,7 @@ export const ReportsPage: React.FC = () => {
                     </Card>
                   </Col>
                   <Col xs={24} lg={12}>
-                    <Card className="glass-card" title="Chi tiết thị hiếu sản phẩm theo phân khúc (View: v_category_preference)">
+                    <Card className="glass-card" title="Chi tiết thị hiếu sản phẩm theo phân khúc">
                       <Table
                         dataSource={categoryPrefs}
                         columns={categoryColumns}

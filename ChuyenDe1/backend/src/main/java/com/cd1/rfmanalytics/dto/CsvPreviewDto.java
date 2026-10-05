@@ -19,4 +19,5 @@ public class CsvPreviewDto {
     private List<String> headers;
     private List<Map<String, String>> sampleRows;
     private List<String> targetFields;
+    private String fileFormat;
 }
