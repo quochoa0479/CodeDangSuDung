@@ -176,6 +176,7 @@ html, body {
 }
 
 .ant-btn-primary {
+  color: #ffffff !important;
   background: #2563EB !important;
   border: 1px solid #3B82F6 !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
@@ -184,8 +185,14 @@ html, body {
 }
 
 .ant-btn-primary:hover {
+  color: #ffffff !important;
   background: #1D4ED8 !important;
   border-color: #2563EB !important;
+}
+
+.ant-btn-primary span,
+.ant-btn-primary .anticon {
+  color: #ffffff !important;
 }
 
 /* Subtle Fade-in without layout shift */

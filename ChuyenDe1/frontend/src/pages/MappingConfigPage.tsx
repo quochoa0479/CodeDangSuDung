@@ -7,7 +7,6 @@ import {
   Modal,
   Form,
   Input,
-  Select,
   Space,
   Popconfirm,
   message,
@@ -19,22 +18,18 @@ import {
   EyeOutlined,
   ReloadOutlined,
   SettingOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { importApi } from '../api/importApi';
 import type { ImportMapping } from '../types/import';
 import { formatDateTime } from '../utils/formatters';
 
-const TARGET_TABLES = [
-  { value: 'customers', label: 'Khách hàng (customers)' },
-  { value: 'orders', label: 'Đơn hàng (orders)' },
-  { value: 'products', label: 'Sản phẩm (products)' },
-  { value: 'user_activities', label: 'Nhật ký hoạt động (user_activities)' },
-];
+const DEFAULT_MAPPING_JSON = `{\n  "order_code": "Mã đơn hàng",\n  "customer_code": "Mã khách hàng",\n  "full_name": "Họ và tên",\n  "phone": "Số điện thoại",\n  "email": "Email",\n  "city": "Tỉnh thành",\n  "total_amount": "Tổng tiền",\n  "order_date": "Ngày đặt"\n}`;
 
 export const MappingConfigPage: React.FC = () => {
   const [mappings, setMappings] = useState<ImportMapping[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filterTable, setFilterTable] = useState<string | undefined>();
+  const [searchText, setSearchText] = useState('');
 
   // Modal Detail state
   const [selectedMapping, setSelectedMapping] = useState<ImportMapping | null>(null);
@@ -47,12 +42,12 @@ export const MappingConfigPage: React.FC = () => {
 
   useEffect(() => {
     fetchMappings();
-  }, [filterTable]);
+  }, []);
 
   const fetchMappings = async () => {
     setLoading(true);
     try {
-      const res = await importApi.getMappings(filterTable);
+      const res = await importApi.getMappings();
       if (res.success && res.data) {
         setMappings(res.data);
       }
@@ -91,12 +86,12 @@ export const MappingConfigPage: React.FC = () => {
       setSaving(true);
       const res = await importApi.saveMapping({
         name: values.name,
-        tableTarget: values.tableTarget,
+        tableTarget: 'all',
         mappingConfig: parsedConfig,
       });
 
       if (res.success) {
-        message.success('Đã thêm mẫu cấu hình mapping mới!');
+        message.success('Đã thêm mẫu cấu hình mới!');
         setCreateModalVisible(false);
         createForm.resetFields();
         fetchMappings();
@@ -104,7 +99,7 @@ export const MappingConfigPage: React.FC = () => {
         message.error(res.message || 'Lỗi khi lưu cấu hình');
       }
     } catch (err: any) {
-      message.error(err.message || 'Vui lòng điền đầy đủ các thông tin hợp lệ');
+      message.error(err.message || 'Vui lòng điền đầy đủ thông tin hợp lệ');
     } finally {
       setSaving(false);
     }
@@ -122,6 +117,10 @@ export const MappingConfigPage: React.FC = () => {
     }
   };
 
+  const filteredMappings = mappings.filter((m) =>
+    m.name.toLowerCase().includes(searchText.toLowerCase())
+  );
+
   const columns = [
     {
       title: 'Tên cấu hình',
@@ -130,18 +129,12 @@ export const MappingConfigPage: React.FC = () => {
       render: (name: string, record: ImportMapping) => (
         <div>
           <div style={{ fontWeight: 700, color: '#FFFFFF', fontSize: '14px' }}>{name}</div>
-          <div style={{ fontSize: '11px', color: '#94A3B8' }}>Mã cấu hình: #{record.id}</div>
+          <div style={{ fontSize: '11px', color: '#94A3B8' }}>Mã: #{record.id}</div>
         </div>
       ),
     },
     {
-      title: 'Bảng đích',
-      dataIndex: 'tableTarget',
-      key: 'tableTarget',
-      render: (table: string) => <Tag color="purple">{table}</Tag>,
-    },
-    {
-      title: 'Số trường đã ánh xạ',
+      title: 'Số trường ánh xạ',
       key: 'fieldCount',
       render: (_: any, record: ImportMapping) => {
         const pairs = parseMappingPairs(record.mappingConfig);
@@ -213,18 +206,29 @@ export const MappingConfigPage: React.FC = () => {
               marginBottom: '4px',
             }}
           >
-            Quản Lý Cấu Hình Ánh Xạ CSV
+            Quản Lý Cấu Hình Ánh Xạ
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-            Lưu trữ và tái sử dụng các mẫu ánh xạ cột dữ liệu từ Shopee, Tiki, Lazada, ERP
+            Lưu trữ và tái sử dụng các mẫu ánh xạ cột khi nhập dữ liệu
           </p>
         </div>
 
-        <Space>
+        <Space wrap>
+          <Input
+            placeholder="Tìm kiếm mẫu..."
+            prefix={<SearchOutlined style={{ color: '#64748B' }} />}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            style={{ width: '220px', borderRadius: '6px' }}
+            allowClear
+          />
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => setCreateModalVisible(true)}
+            onClick={() => {
+              createForm.resetFields();
+              setCreateModalVisible(true);
+            }}
             style={{
               borderRadius: '6px',
               fontWeight: 600,
@@ -238,30 +242,10 @@ export const MappingConfigPage: React.FC = () => {
         </Space>
       </div>
 
-      {/* Filter Card */}
-      <Card className="glass-card" style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          <span style={{ color: '#94A3B8', fontSize: '13px' }}>Lọc theo bảng cơ sở dữ liệu:</span>
-          <Select
-            placeholder="Tất cả các bảng"
-            style={{ width: '260px' }}
-            value={filterTable}
-            onChange={setFilterTable}
-            allowClear
-          >
-            {TARGET_TABLES.map((t) => (
-              <Select.Option key={t.value} value={t.value}>
-                {t.label}
-              </Select.Option>
-            ))}
-          </Select>
-        </div>
-      </Card>
-
       {/* Mappings Table */}
       <Card className="glass-card">
         <Table
-          dataSource={mappings}
+          dataSource={filteredMappings}
           columns={columns}
           rowKey="id"
           loading={loading}
@@ -290,9 +274,6 @@ export const MappingConfigPage: React.FC = () => {
           <div>
             <Descriptions bordered column={1} size="small" style={{ marginBottom: '16px' }}>
               <Descriptions.Item label="Tên cấu hình">{selectedMapping.name}</Descriptions.Item>
-              <Descriptions.Item label="Bảng đích">
-                <Tag color="purple">{selectedMapping.tableTarget}</Tag>
-              </Descriptions.Item>
               <Descriptions.Item label="Thời gian tạo">
                 {formatDateTime(selectedMapping.createdAt)}
               </Descriptions.Item>
@@ -306,13 +287,13 @@ export const MappingConfigPage: React.FC = () => {
               }))}
               columns={[
                 {
-                  title: 'Trường DB',
+                  title: 'Trường dữ liệu hệ thống',
                   dataIndex: 'field',
                   key: 'field',
                   render: (f: string) => <code style={{ color: '#818CF8' }}>{f}</code>,
                 },
                 {
-                  title: 'Cột trong tệp CSV',
+                  title: 'Cột trong tệp',
                   dataIndex: 'column',
                   key: 'column',
                   render: (c: string) => <Tag color="cyan">{c}</Tag>,
@@ -328,7 +309,7 @@ export const MappingConfigPage: React.FC = () => {
 
       {/* Modal Create New Mapping */}
       <Modal
-        title="Thêm Mới Cấu Hình Ánh Xạ Cột"
+        title="Thêm Cấu Hình Ánh Xạ"
         open={createModalVisible}
         onCancel={() => setCreateModalVisible(false)}
         onOk={handleCreateSubmit}
@@ -337,39 +318,28 @@ export const MappingConfigPage: React.FC = () => {
         cancelText="Hủy"
         width={600}
       >
-        <Form form={createForm} layout="vertical" initialValues={{ tableTarget: 'customers' }}>
+        <Form
+          form={createForm}
+          layout="vertical"
+          initialValues={{ mappingJson: DEFAULT_MAPPING_JSON }}
+        >
           <Form.Item
             name="name"
             label="Tên cấu hình mẫu"
             rules={[{ required: true, message: 'Vui lòng nhập tên cấu hình' }]}
           >
-            <Input placeholder="Ví dụ: Shopee Customer Standard Mapping" />
-          </Form.Item>
-
-          <Form.Item
-            name="tableTarget"
-            label="Bảng cơ sở dữ liệu đích"
-            rules={[{ required: true, message: 'Vui lòng chọn bảng đích' }]}
-          >
-            <Select>
-              {TARGET_TABLES.map((t) => (
-                <Select.Option key={t.value} value={t.value}>
-                  {t.label}
-                </Select.Option>
-              ))}
-            </Select>
+            <Input placeholder="Ví dụ: Mẫu Shopee, Mẫu KiotViet, Mẫu Khách hàng..." />
           </Form.Item>
 
           <Form.Item
             name="mappingJson"
-            label="Nội dung ánh xạ (Định dạng JSON: DB_FIELD : CSV_HEADER)"
+            label="Nội dung ánh xạ (Định dạng JSON: Trường_Hệ_Thống : Cột_Trong_Tệp)"
             rules={[{ required: true, message: 'Vui lòng nhập JSON ánh xạ' }]}
-            initialValue={`{\n  "customerCode": "Mã Khách Hàng",\n  "fullName": "Họ và Tên",\n  "email": "Email",\n  "phone": "Số điện thoại",\n  "city": "Tỉnh thành"\n}`}
           >
             <Input.TextArea
               rows={8}
               style={{ fontFamily: 'monospace', fontSize: '13px' }}
-              placeholder='{\n  "customerCode": "Mã KH",\n  "fullName": "Tên KH"\n}'
+              placeholder='{\n  "order_code": "Mã đơn",\n  "customer_code": "Mã khách"\n}'
             />
           </Form.Item>
         </Form>

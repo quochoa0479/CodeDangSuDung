@@ -27,6 +27,15 @@ public class ImportLog {
     @Column(name = "table_name", nullable = false, length = 50)
     private String tableName;
 
+    @Column(name = "file_name")
+    private String fileName;
+
+    @Column(name = "stored_file_path", length = 500)
+    private String storedFilePath;
+
+    @Column(name = "file_size")
+    private Long fileSize;
+
     @Column(name = "records_imported")
     @Builder.Default
     private Integer recordsImported = 0;

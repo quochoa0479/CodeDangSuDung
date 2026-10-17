@@ -10,11 +10,17 @@ import com.cd1.rfmanalytics.service.CsvImportService;
 import com.cd1.rfmanalytics.service.ImportMappingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -85,5 +91,43 @@ public class ImportController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ApiResponse.ok(csvImportService.getImportHistory(PageRequest.of(page, size)));
+    }
+
+    @GetMapping("/files/{id}/download")
+    public ResponseEntity<Resource> downloadFile(@PathVariable Long id) {
+        try {
+            Resource resource = csvImportService.downloadImportFile(id);
+            String fileName = csvImportService.getImportFileName(id);
+            String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"; filename*=UTF-8''" + encodedFileName)
+                    .body(resource);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PostMapping("/files/{id}/rerun")
+    public ApiResponse<ImportLog> rerunImport(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "false") boolean cleanBeforeImport) {
+        try {
+            ImportLog result = csvImportService.rerunImport(id, cleanBeforeImport);
+            return ApiResponse.ok("Chạy lại phân tích tệp thành công", result);
+        } catch (Exception e) {
+            return ApiResponse.error("Chạy lại phân tích thất bại: " + e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/history/{id}")
+    public ApiResponse<String> deleteImportLog(@PathVariable Long id) {
+        try {
+            csvImportService.deleteImportLog(id);
+            return ApiResponse.ok("Xóa lịch sử nạp dữ liệu và tệp thành công", "DELETED");
+        } catch (Exception e) {
+            return ApiResponse.error("Xóa lịch sử thất bại: " + e.getMessage());
+        }
     }
 }

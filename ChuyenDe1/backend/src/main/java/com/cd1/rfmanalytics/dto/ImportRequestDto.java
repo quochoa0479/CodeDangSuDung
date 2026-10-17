@@ -25,4 +25,5 @@ public class ImportRequestDto {
 
     private String templateName;
     private boolean saveAsTemplate;
+    private boolean cleanBeforeImport;
 }

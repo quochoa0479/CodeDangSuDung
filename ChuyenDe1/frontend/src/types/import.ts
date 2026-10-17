@@ -16,6 +16,7 @@ export interface ImportRequest {
   columnMapping: Record<string, string>;
   saveAsTemplate?: boolean;
   templateName?: string;
+  cleanBeforeImport?: boolean;
 }
 
 export interface ImportMapping {
@@ -32,6 +33,9 @@ export interface ImportLog {
   importType: string;
   source: string;
   tableName: string;
+  fileName?: string;
+  storedFilePath?: string;
+  fileSize?: number;
   recordsImported: number;
   recordsUpdated: number;
   recordsFailed: number;

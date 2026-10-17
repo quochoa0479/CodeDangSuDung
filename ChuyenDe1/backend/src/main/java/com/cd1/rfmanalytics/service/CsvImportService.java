@@ -9,6 +9,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,6 +22,8 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -49,8 +53,9 @@ public class CsvImportService {
     private final Map<String, StoredFileInfo> tempFileStorage = new ConcurrentHashMap<>();
 
     private static final Map<String, List<String>> TARGET_FIELDS = Map.of(
+            "all", List.of("order_code", "customer_code", "full_name", "email", "phone", "gender", "city", "order_date", "total_amount", "order_status", "payment_method", "product_name", "product_price", "category_name", "quantity"),
+            "orders", List.of("order_code", "customer_code", "full_name", "email", "phone", "gender", "city", "order_date", "total_amount", "order_status", "payment_method", "product_name", "product_price", "category_name"),
             "customers", List.of("customer_code", "full_name", "email", "phone", "gender", "city"),
-            "orders", List.of("order_code", "customer_code", "total_amount", "order_status", "payment_method", "order_date"),
             "products", List.of("name", "price", "stock_quantity", "category_name"),
             "user_activities", List.of("customer_code", "action_type", "product_id", "duration_seconds", "device_type", "created_at"),
             "user_activity_logs", List.of("customer_code", "action_type", "product_id", "duration_seconds", "device_type", "created_at"),
@@ -105,10 +110,24 @@ public class CsvImportService {
         }
 
         String format = storedInfo.format();
+
+        // 1. Lưu trữ vĩnh viễn tệp vào thư mục storage/uploads trên máy chủ
+        Path uploadDirPath = Paths.get("storage", "uploads");
+        if (!Files.exists(uploadDirPath)) {
+            Files.createDirectories(uploadDirPath);
+        }
+        String safeFileName = System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8) + "_" + storedInfo.originalFilename();
+        Path permanentPath = uploadDirPath.resolve(safeFileName);
+        Files.copy(storedInfo.path(), permanentPath, StandardCopyOption.REPLACE_EXISTING);
+        long fileSize = Files.size(permanentPath);
+
         ImportLog logEntry = ImportLog.builder()
                 .importType("FULL")
                 .source(format)
                 .tableName(request.getTargetTable())
+                .fileName(storedInfo.originalFilename())
+                .storedFilePath(permanentPath.toString())
+                .fileSize(fileSize)
                 .status("RUNNING")
                 .startedAt(LocalDateTime.now())
                 .recordsImported(0)
@@ -117,32 +136,79 @@ public class CsvImportService {
                 .build();
         logEntry = importLogRepository.save(logEntry);
 
+        try {
+            MultiFormatFileParser.ParsedFileData parsed = fileParser.parse(storedInfo.path(), storedInfo.originalFilename());
+            executeRows(logEntry, parsed.rows(), request.getTargetTable(), request.getColumnMapping(), request.isCleanBeforeImport());
+
+            if (request.isSaveAsTemplate() && request.getTemplateName() != null && !request.getTemplateName().isBlank()) {
+                saveMapping(request.getTemplateName(), request.getTargetTable(), request.getColumnMapping());
+            }
+        } catch (Exception e) {
+            logEntry.setStatus("FAILED");
+            logEntry.setErrorMessage(e.getMessage());
+            logEntry.setCompletedAt(LocalDateTime.now());
+            importLogRepository.save(logEntry);
+            throw e;
+        } finally {
+            try {
+                Files.deleteIfExists(storedInfo.path());
+                tempFileStorage.remove(request.getFileId());
+            } catch (Exception ignored) {}
+        }
+
+        return logEntry;
+    }
+
+    /**
+     * Thực thi nạp các dòng dữ liệu vào bảng đích và kích hoạt tính toán RFM
+     */
+    private void executeRows(
+            ImportLog logEntry,
+            List<Map<String, String>> rows,
+            String targetTableInput,
+            Map<String, String> mappingInput,
+            boolean cleanBeforeImport) throws Exception {
+
         int imported = 0;
         int updated = 0;
         int failed = 0;
 
-        try {
-            MultiFormatFileParser.ParsedFileData parsed = fileParser.parse(storedInfo.path(), storedInfo.originalFilename());
-            List<Map<String, String>> rows = parsed.rows();
-            Map<String, String> mapping = request.getColumnMapping() != null ? request.getColumnMapping() : Collections.emptyMap();
-            String targetTable = request.getTargetTable().toLowerCase().trim();
+        Map<String, String> mapping = mappingInput != null ? mappingInput : Collections.emptyMap();
+        String targetTable = targetTableInput.toLowerCase().trim();
+
+        if (cleanBeforeImport) {
+            try {
+                jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0");
+                jdbcTemplate.execute("TRUNCATE TABLE order_details");
+                jdbcTemplate.execute("TRUNCATE TABLE reviews");
+                jdbcTemplate.execute("TRUNCATE TABLE user_activity_logs");
+                jdbcTemplate.execute("TRUNCATE TABLE customer_segments");
+                jdbcTemplate.execute("TRUNCATE TABLE segment_history");
+                jdbcTemplate.execute("TRUNCATE TABLE orders");
+                jdbcTemplate.execute("TRUNCATE TABLE customers");
+                jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1");
+                log.info("Đã làm sạch toàn bộ dữ liệu bán hàng cũ theo tùy chọn cleanBeforeImport.");
+            } catch (Exception ex) {
+                log.warn("Lỗi khi làm sạch dữ liệu cũ: {}", ex.getMessage());
+            }
+        }
 
             if ("customers".equals(targetTable)) {
                 for (int i = 0; i < rows.size(); i++) {
                     Map<String, String> row = rows.get(i);
                     try {
-                        String code = getMappedValue(row, mapping.get("customer_code"));
-                        String name = getMappedValue(row, mapping.get("full_name"));
-                        String email = getMappedValue(row, mapping.get("email"));
-                        String phone = getMappedValue(row, mapping.get("phone"));
-                        String city = getMappedValue(row, mapping.get("city"));
-                        String gender = getMappedValue(row, mapping.get("gender"));
+                        String code = getValue(row, mapping, "customer_code", "customer_id", "cust_id", "cust_code", "customerid", "id");
+                        String name = getValue(row, mapping, "full_name", "customer_name", "name", "customername");
+                        String email = getValue(row, mapping, "email", "mail", "e-mail");
+                        String phone = getValue(row, mapping, "phone", "phone_number", "sdt", "mobile");
+                        String city = getValue(row, mapping, "city", "province", "address");
+                        String gender = getValue(row, mapping, "gender", "sex");
 
                         if (code == null || code.isBlank()) {
                             code = "CUST_" + System.currentTimeMillis() + "_" + (i + 1);
                         }
                         if (name == null || name.isBlank()) {
-                            name = "Customer " + code;
+                            name = "Khách hàng " + code;
                         }
                         if (email == null || email.isBlank()) {
                             email = code.toLowerCase().replaceAll("[^a-z0-9_]", "") + "@example.com";
@@ -179,45 +245,167 @@ public class CsvImportService {
                         failed++;
                     }
                 }
-            } else if ("orders".equals(targetTable)) {
+            } else if ("orders".equals(targetTable) || "all".equals(targetTable) || "all_in_one".equals(targetTable)) {
                 for (int i = 0; i < rows.size(); i++) {
                     Map<String, String> row = rows.get(i);
                     try {
-                        String orderCode = getMappedValue(row, mapping.get("order_code"));
-                        String custCode = getMappedValue(row, mapping.get("customer_code"));
-                        String amountStr = getMappedValue(row, mapping.get("total_amount"));
-                        String status = getMappedValue(row, mapping.get("order_status"));
-                        String paymentMethod = getMappedValue(row, mapping.get("payment_method"));
-                        String dateStr = getMappedValue(row, mapping.get("order_date"));
+                        String orderCode = getValue(row, mapping, "order_code", "order_id", "orderid", "id", "code");
+                        String custCode = getValue(row, mapping, "customer_code", "customer_id", "cust_id", "cust_code", "customerid");
+                        String custName = getValue(row, mapping, "full_name", "customer_name", "name", "customername");
+                        String custEmail = getValue(row, mapping, "email", "mail", "e-mail");
+                        String custPhone = getValue(row, mapping, "phone", "phone_number", "sdt", "mobile", "telephone");
+                        String custCity = getValue(row, mapping, "city", "province", "address", "thanhpho", "tinhthanh");
+                        String custGender = getValue(row, mapping, "gender", "sex", "gioitinh");
+                        String amountStr = getValue(row, mapping, "total_amount", "order_amount", "amount", "total", "price");
+                        String status = getValue(row, mapping, "order_status", "status", "orderstatus");
+                        String paymentMethod = getValue(row, mapping, "payment_method", "payment", "method");
+                        String dateStr = getValue(row, mapping, "order_date", "orderdate", "date", "created_at");
 
+                        // Thông tin sản phẩm (nếu file có cột sản phẩm)
+                        String prodName = getValue(row, mapping, "product_name", "product", "item_name", "sanpham", "tensanpham", "name");
+                        String prodPriceStr = getValue(row, mapping, "product_price", "unit_price", "price", "gia", "dongia");
+                        String prodCategory = getValue(row, mapping, "category_name", "category", "danhmuc", "loaisanpham");
+                        String prodQuantityStr = getValue(row, mapping, "quantity", "qty", "soluong", "so_luong");
+
+                        // 1. Xử lý Khách hàng
                         Customer customer = null;
                         if (custCode != null && !custCode.isBlank()) {
                             customer = customerRepository.findByCustomerCode(custCode).orElse(null);
                         }
+                        if (customer == null && custEmail != null && !custEmail.isBlank()) {
+                            customer = customerRepository.findByEmail(custEmail).orElse(null);
+                        }
+
+                        if (customer == null && ((custCode != null && !custCode.isBlank()) || (custEmail != null && !custEmail.isBlank()) || (custName != null && !custName.isBlank()))) {
+                            String code = (custCode != null && !custCode.isBlank()) ? custCode : "CUST_" + System.currentTimeMillis() + "_" + (i + 1);
+                            String name = (custName != null && !custName.isBlank()) ? custName : "Khách hàng " + code;
+                            String email = (custEmail != null && !custEmail.isBlank()) ? custEmail : (code.toLowerCase().replaceAll("[^a-z0-9_]", "") + "@example.com");
+                            customer = Customer.builder()
+                                    .customerCode(code)
+                                    .fullName(name)
+                                    .email(email)
+                                    .phone(custPhone)
+                                    .city(custCity)
+                                    .gender(custGender)
+                                    .createdAt(LocalDateTime.now())
+                                    .build();
+                            customer = customerRepository.save(customer);
+                        } else if (customer != null) {
+                            boolean changed = false;
+                            if (custName != null && !custName.isBlank() && 
+                                    (customer.getFullName() == null || customer.getFullName().startsWith("Customer CUST_") || customer.getFullName().startsWith("Khách hàng CUST_") || !customer.getFullName().equals(custName))) {
+                                customer.setFullName(custName);
+                                changed = true;
+                            }
+                            if (custEmail != null && !custEmail.isBlank() && !custEmail.equals(customer.getEmail())) {
+                                customer.setEmail(custEmail);
+                                changed = true;
+                            }
+                            if (custPhone != null && !custPhone.isBlank() && !custPhone.equals(customer.getPhone())) {
+                                customer.setPhone(custPhone);
+                                changed = true;
+                            }
+                            if (custCity != null && !custCity.isBlank() && !custCity.equals(customer.getCity())) {
+                                customer.setCity(custCity);
+                                changed = true;
+                            }
+                            if (custGender != null && !custGender.isBlank() && !custGender.equals(customer.getGender())) {
+                                customer.setGender(custGender);
+                                changed = true;
+                            }
+                            if (changed) {
+                                customer = customerRepository.save(customer);
+                            }
+                        }
+
                         if (customer == null) {
                             customer = customerRepository.findAll().stream().findFirst().orElse(null);
                         }
 
-                        if (customer != null) {
+                        // 2. Xử lý Sản phẩm (nếu có)
+                        Product product = null;
+                        if (prodName != null && !prodName.isBlank()) {
+                            final String finalProdName = prodName.trim();
+                            product = productRepository.findByName(finalProdName).orElse(null);
+                            if (product == null) {
+                                Category category = null;
+                                if (prodCategory != null && !prodCategory.isBlank()) {
+                                    final String finalCatName = prodCategory.trim();
+                                    category = categoryRepository.findByName(finalCatName)
+                                            .orElseGet(() -> categoryRepository.save(Category.builder().name(finalCatName).description(finalCatName).build()));
+                                } else {
+                                    category = categoryRepository.findAll().stream().findFirst().orElse(null);
+                                }
+                                BigDecimal prodPrice = parseBigDecimal(prodPriceStr, BigDecimal.valueOf(100000));
+                                product = Product.builder()
+                                        .name(finalProdName)
+                                        .price(prodPrice)
+                                        .stockQuantity(100)
+                                        .category(category)
+                                        .createdAt(LocalDateTime.now())
+                                        .build();
+                                product = productRepository.save(product);
+                            }
+                        }
+
+                        // 3. Xử lý Đơn hàng
+                        boolean hasOrderInfo = (orderCode != null && !orderCode.isBlank()) || (amountStr != null && !amountStr.isBlank());
+                        if (hasOrderInfo && customer != null) {
                             BigDecimal totalAmount = parseBigDecimal(amountStr, BigDecimal.valueOf(500000));
                             LocalDateTime orderDate = parseDateTime(dateStr);
+                            String finalOrderCode = (orderCode != null && !orderCode.isBlank()) ? orderCode : "ORD_" + System.currentTimeMillis() + "_" + (i + 1);
 
-                            Order order = Order.builder()
-                                    .orderCode(orderCode != null && !orderCode.isBlank() ? orderCode : "ORD_" + System.currentTimeMillis() + "_" + (i + 1))
-                                    .customer(customer)
-                                    .totalAmount(totalAmount)
-                                    .orderStatus(status != null && !status.isBlank() ? status.toUpperCase() : "COMPLETED")
-                                    .paymentMethod(paymentMethod != null && !paymentMethod.isBlank() ? paymentMethod.toUpperCase() : "COD")
-                                    .orderDate(orderDate)
-                                    .build();
+                            Optional<Order> existing = orderRepository.findByOrderCode(finalOrderCode);
+                            Order ord;
+                            if (existing.isPresent()) {
+                                ord = existing.get();
+                                ord.setCustomer(customer);
+                                ord.setTotalAmount(totalAmount);
+                                ord.setOrderStatus(status != null && !status.isBlank() ? status.toUpperCase().trim() : "COMPLETED");
+                                ord.setPaymentMethod(paymentMethod != null && !paymentMethod.isBlank() ? paymentMethod.toUpperCase().trim() : "COD");
+                                ord.setOrderDate(orderDate);
+                                ord = orderRepository.save(ord);
+                                updated++;
+                            } else {
+                                ord = Order.builder()
+                                        .orderCode(finalOrderCode)
+                                        .customer(customer)
+                                        .totalAmount(totalAmount)
+                                        .orderStatus(status != null && !status.isBlank() ? status.toUpperCase().trim() : "COMPLETED")
+                                        .paymentMethod(paymentMethod != null && !paymentMethod.isBlank() ? paymentMethod.toUpperCase().trim() : "COD")
+                                        .orderDate(orderDate)
+                                        .build();
+                                ord = orderRepository.save(ord);
+                                imported++;
+                            }
 
-                            orderRepository.save(order);
+                            // 4. Nếu có sản phẩm đi kèm đơn, lưu OrderDetail
+                            if (product != null) {
+                                int qty = 1;
+                                if (prodQuantityStr != null && !prodQuantityStr.isBlank()) {
+                                    try {
+                                        qty = Math.max(1, Integer.parseInt(prodQuantityStr.replaceAll("[^0-9]", "")));
+                                    } catch (Exception ignored) {}
+                                }
+                                BigDecimal unitPrice = product.getPrice() != null ? product.getPrice() : BigDecimal.valueOf(100000);
+                                OrderDetail od = OrderDetail.builder()
+                                        .order(ord)
+                                        .product(product)
+                                        .quantity(qty)
+                                        .unitPrice(unitPrice)
+                                        .subtotal(unitPrice.multiply(BigDecimal.valueOf(qty)))
+                                        .build();
+                                orderDetailRepository.save(od);
+                            }
+                        } else if (customer != null) {
+                            imported++;
+                        } else if (product != null) {
                             imported++;
                         } else {
                             failed++;
                         }
                     } catch (Exception ex) {
-                        log.warn("Lỗi import đơn hàng {}: {}", i, ex.getMessage());
+                        log.warn("Lỗi import dòng {}: {}", i, ex.getMessage());
                         failed++;
                     }
                 }
@@ -307,41 +495,96 @@ public class CsvImportService {
                 }
             }
 
-            logEntry.setStatus("SUCCESS");
-            logEntry.setRecordsImported(imported);
-            logEntry.setRecordsUpdated(updated);
-            logEntry.setRecordsFailed(failed);
-            logEntry.setCompletedAt(LocalDateTime.now());
-            importLogRepository.save(logEntry);
+        logEntry.setStatus("SUCCESS");
+        logEntry.setRecordsImported(imported);
+        logEntry.setRecordsUpdated(updated);
+        logEntry.setRecordsFailed(failed);
+        logEntry.setCompletedAt(LocalDateTime.now());
+        importLogRepository.save(logEntry);
 
-            if (request.isSaveAsTemplate() && request.getTemplateName() != null && !request.getTemplateName().isBlank()) {
-                saveMapping(request.getTemplateName(), request.getTargetTable(), request.getColumnMapping());
-            }
-
-            // Tự động kích hoạt lại thuật toán RFM
-            try {
-                jdbcTemplate.execute("CALL sp_calculate_rfm()");
-            } catch (Exception e) {
-                log.warn("Auto RFM calculation after import encountered notice: {}", e.getMessage());
-            }
-
+        // Tự động kích hoạt lại thuật toán RFM
+        try {
+            jdbcTemplate.execute("CALL sp_calculate_rfm()");
         } catch (Exception e) {
-            logEntry.setStatus("FAILED");
-            logEntry.setErrorMessage(e.getMessage());
-            logEntry.setCompletedAt(LocalDateTime.now());
-            importLogRepository.save(logEntry);
-            throw e;
-        } finally {
-            try {
-                Files.deleteIfExists(storedInfo.path());
-                tempFileStorage.remove(request.getFileId());
-            } catch (Exception ignored) {}
+            log.warn("Auto RFM calculation after import encountered notice: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Tải tệp dữ liệu đã nạp trước đó từ máy chủ
+     */
+    public Resource downloadImportFile(Long logId) throws Exception {
+        ImportLog logEntry = importLogRepository.findById(logId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhật ký import #" + logId));
+        if (logEntry.getStoredFilePath() == null || logEntry.getStoredFilePath().isBlank()) {
+            throw new IllegalArgumentException("Lô import này không có tệp lưu trữ trên máy chủ");
+        }
+        Path filePath = Paths.get(logEntry.getStoredFilePath());
+        if (!Files.exists(filePath)) {
+            throw new IllegalArgumentException("Tệp vật lý không còn tồn tại trên máy chủ: " + filePath);
+        }
+        return new UrlResource(filePath.toUri());
+    }
+
+    /**
+     * Lấy tên tệp gốc của bản ghi import
+     */
+    public String getImportFileName(Long logId) {
+        ImportLog logEntry = importLogRepository.findById(logId).orElse(null);
+        if (logEntry != null && logEntry.getFileName() != null && !logEntry.getFileName().isBlank()) {
+            return logEntry.getFileName();
+        }
+        return "imported_file.xlsx";
+    }
+
+    /**
+     * Phân tích lại một tệp đã lưu trước đó trên server (Rerun)
+     */
+    public ImportLog rerunImport(Long logId, boolean cleanBeforeImport) throws Exception {
+        ImportLog oldLog = importLogRepository.findById(logId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhật ký import #" + logId));
+        if (oldLog.getStoredFilePath() == null || oldLog.getStoredFilePath().isBlank()) {
+            throw new IllegalArgumentException("Lô import này không có tệp lưu trữ trên máy chủ");
+        }
+        Path filePath = Paths.get(oldLog.getStoredFilePath());
+        if (!Files.exists(filePath)) {
+            throw new IllegalArgumentException("Tệp vật lý không còn tồn tại trên máy chủ: " + filePath);
         }
 
-        return logEntry;
+        MultiFormatFileParser.ParsedFileData parsed = fileParser.parse(filePath, oldLog.getFileName());
+
+        ImportLog newLog = ImportLog.builder()
+                .importType("RERUN")
+                .source(oldLog.getSource())
+                .tableName(oldLog.getTableName())
+                .fileName(oldLog.getFileName())
+                .storedFilePath(oldLog.getStoredFilePath())
+                .fileSize(oldLog.getFileSize())
+                .status("RUNNING")
+                .startedAt(LocalDateTime.now())
+                .recordsImported(0)
+                .recordsUpdated(0)
+                .recordsFailed(0)
+                .build();
+        newLog = importLogRepository.save(newLog);
+
+        try {
+            executeRows(newLog, parsed.rows(), oldLog.getTableName(), Collections.emptyMap(), cleanBeforeImport);
+        } catch (Exception e) {
+            newLog.setStatus("FAILED");
+            newLog.setErrorMessage(e.getMessage());
+            newLog.setCompletedAt(LocalDateTime.now());
+            importLogRepository.save(newLog);
+            throw e;
+        }
+
+        return newLog;
     }
 
     public List<ImportMapping> getSavedMappings(String targetTable) {
+        if (targetTable == null || targetTable.isBlank() || "all".equalsIgnoreCase(targetTable) || "all_in_one".equalsIgnoreCase(targetTable)) {
+            return mappingRepository.findAll();
+        }
         return mappingRepository.findByTableTarget(targetTable);
     }
 
@@ -357,6 +600,21 @@ public class CsvImportService {
 
     public Page<ImportLog> getImportHistory(Pageable pageable) {
         return importLogRepository.findAllByOrderByStartedAtDesc(pageable);
+    }
+
+    @Transactional
+    public void deleteImportLog(Long logId) {
+        ImportLog logEntry = importLogRepository.findById(logId).orElse(null);
+        if (logEntry != null) {
+            if (logEntry.getStoredFilePath() != null && !logEntry.getStoredFilePath().isBlank()) {
+                try {
+                    Files.deleteIfExists(Paths.get(logEntry.getStoredFilePath()));
+                } catch (Exception ex) {
+                    log.warn("Không thể xóa tệp vật lý {}: {}", logEntry.getStoredFilePath(), ex.getMessage());
+                }
+            }
+            importLogRepository.deleteById(logId);
+        }
     }
 
     @Transactional
@@ -494,7 +752,41 @@ public class CsvImportService {
             return null;
         }
         String val = row.get(mappedHeaderName);
+        if (val == null) {
+            for (Map.Entry<String, String> e : row.entrySet()) {
+                if (e.getKey().equalsIgnoreCase(mappedHeaderName.trim())) {
+                    val = e.getValue();
+                    break;
+                }
+            }
+        }
         return val != null ? val.trim() : null;
+    }
+
+    private String getValue(Map<String, String> row, Map<String, String> mapping, String targetField, String... fallbacks) {
+        String mappedHeader = mapping != null ? mapping.get(targetField) : null;
+        String val = getMappedValue(row, mappedHeader);
+        if (val != null && !val.isBlank()) {
+            return val;
+        }
+        // Direct targetField match
+        val = getMappedValue(row, targetField);
+        if (val != null && !val.isBlank()) {
+            return val;
+        }
+        // Fallback synonyms directly against row headers
+        for (String fb : fallbacks) {
+            String fbNorm = fb.toLowerCase().replaceAll("[^a-z0-9]", "");
+            for (Map.Entry<String, String> entry : row.entrySet()) {
+                String keyNorm = entry.getKey().toLowerCase().replaceAll("[^a-z0-9]", "");
+                if (keyNorm.equals(fbNorm) || (keyNorm.contains(fbNorm) && fbNorm.length() >= 4)) {
+                    if (entry.getValue() != null && !entry.getValue().isBlank()) {
+                        return entry.getValue().trim();
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private BigDecimal parseBigDecimal(String str, BigDecimal defaultValue) {
@@ -533,22 +825,29 @@ public class CsvImportService {
 
     private LocalDateTime parseDateTime(String dateStr) {
         if (dateStr == null || dateStr.isBlank()) {
-            return LocalDateTime.now().minusDays((long) (Math.random() * 60));
+            return LocalDateTime.now();
         }
         String clean = dateStr.trim();
         String[] patterns = {
                 "yyyy-MM-dd HH:mm:ss",
+                "yyyy-MM-dd HH:mm",
                 "yyyy-MM-dd'T'HH:mm:ss",
                 "yyyy-MM-dd'T'HH:mm:ss.SSS",
                 "dd/MM/yyyy HH:mm:ss",
                 "dd/MM/yyyy HH:mm",
+                "M/d/yyyy HH:mm:ss",
+                "M/d/yyyy H:mm:ss",
+                "M/d/yyyy HH:mm",
+                "M/d/yyyy H:mm",
+                "yyyy/MM/dd HH:mm:ss",
                 "yyyy-MM-dd",
                 "dd/MM/yyyy",
-                "dd-MM-yyyy"
+                "dd-MM-yyyy",
+                "M/d/yyyy"
         };
         for (String pattern : patterns) {
             try {
-                if (pattern.contains("HH")) {
+                if (pattern.contains("HH") || pattern.contains("H:mm")) {
                     return LocalDateTime.parse(clean, DateTimeFormatter.ofPattern(pattern));
                 } else {
                     return LocalDate.parse(clean, DateTimeFormatter.ofPattern(pattern)).atStartOfDay();
@@ -562,6 +861,6 @@ public class CsvImportService {
             return LocalDate.parse(clean).atStartOfDay();
         } catch (Exception ignored) {}
 
-        return LocalDateTime.now().minusDays((long) (Math.random() * 60));
+        return LocalDateTime.now();
     }
 }

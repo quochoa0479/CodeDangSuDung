@@ -92,7 +92,7 @@ public class CustomerService {
             builder.segment("NEW_CUSTOMERS")
                     .rScore(0).fScore(0).mScore(0)
                     .rfmTotal(BigDecimal.ZERO)
-                    .recencyDays(999)
+                    .recencyDays(0)
                     .frequency(0)
                     .monetary(BigDecimal.ZERO)
                     .avgOrderValue(BigDecimal.ZERO)

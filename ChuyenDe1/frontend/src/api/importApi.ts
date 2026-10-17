@@ -42,4 +42,27 @@ export const importApi = {
   getImportHistory: (page = 0, size = 10): Promise<ApiResponse<PageResponse<ImportLog>>> => {
     return axiosClient.get('/import/history', { params: { page, size } });
   },
+
+  downloadFile: async (id: number, fileName?: string): Promise<void> => {
+    const res = await axiosClient.get(`/import/files/${id}/download`, {
+      responseType: 'blob',
+    });
+    const blob = res instanceof Blob ? res : new Blob([res as any]);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName || `file_import_${id}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  rerunImport: (id: number, cleanBeforeImport = false): Promise<ApiResponse<ImportLog>> => {
+    return axiosClient.post(`/import/files/${id}/rerun?cleanBeforeImport=${cleanBeforeImport}`);
+  },
+
+  deleteImportLog: (id: number): Promise<ApiResponse<string>> => {
+    return axiosClient.delete(`/import/history/${id}`);
+  },
 };
