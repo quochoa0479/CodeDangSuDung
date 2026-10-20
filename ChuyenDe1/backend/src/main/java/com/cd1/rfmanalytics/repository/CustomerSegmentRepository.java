@@ -58,7 +58,4 @@ public interface CustomerSegmentRepository extends JpaRepository<CustomerSegment
 
     @Query(value = "SELECT * FROM v_rfm_summary ORDER BY total_customers DESC", nativeQuery = true)
     List<Map<String, Object>> getVrfmSummary();
-
-    @Query(value = "CALL sp_calculate_rfm()", nativeQuery = true)
-    void executeRfmCalculation();
 }

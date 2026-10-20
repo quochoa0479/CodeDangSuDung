@@ -72,6 +72,15 @@ export const CustomersPage: React.FC = () => {
     }
   }, [segment, keyword, page, pageSize, sortBy, direction]);
 
+  // Sync URL search params into local state when URL changes
+  useEffect(() => {
+    const s = searchParams.get('segment') || undefined;
+    const k = searchParams.get('keyword') || '';
+    setSegment(s);
+    setKeyword(k);
+    setPage(1);
+  }, [searchParams]);
+
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);

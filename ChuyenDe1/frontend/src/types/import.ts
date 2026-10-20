@@ -6,6 +6,7 @@ export interface CsvPreview {
   sampleRows: Record<string, string>[];
   targetFields: string[];
   fileFormat?: string; // 'CSV' | 'EXCEL' | 'JSON' | 'XML'
+  detectedTable?: string;
 }
 
 export type FilePreview = CsvPreview;

@@ -20,4 +20,5 @@ public class CsvPreviewDto {
     private List<Map<String, String>> sampleRows;
     private List<String> targetFields;
     private String fileFormat;
+    private String detectedTable;
 }

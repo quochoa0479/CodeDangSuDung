@@ -1,11 +1,11 @@
 package com.cd1.rfmanalytics.service;
 
 import com.cd1.rfmanalytics.dto.CsvPreviewDto;
+import com.cd1.rfmanalytics.dto.ImportMappingRequestDto;
 import com.cd1.rfmanalytics.dto.ImportRequestDto;
 import com.cd1.rfmanalytics.entity.*;
 import com.cd1.rfmanalytics.repository.*;
 import com.cd1.rfmanalytics.service.parser.MultiFormatFileParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,9 +41,8 @@ public class CsvImportService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final UserActivityLogRepository activityLogRepository;
-    private final ReviewRepository reviewRepository;
     private final ImportLogRepository importLogRepository;
-    private final ImportMappingRepository mappingRepository;
+    private final ImportMappingService importMappingService;
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
     private final MultiFormatFileParser fileParser;
@@ -54,12 +53,8 @@ public class CsvImportService {
 
     private static final Map<String, List<String>> TARGET_FIELDS = Map.of(
             "all", List.of("order_code", "customer_code", "full_name", "email", "phone", "gender", "city", "order_date", "total_amount", "order_status", "payment_method", "product_name", "product_price", "category_name", "quantity"),
-            "orders", List.of("order_code", "customer_code", "full_name", "email", "phone", "gender", "city", "order_date", "total_amount", "order_status", "payment_method", "product_name", "product_price", "category_name"),
-            "customers", List.of("customer_code", "full_name", "email", "phone", "gender", "city"),
             "products", List.of("name", "price", "stock_quantity", "category_name"),
-            "user_activities", List.of("customer_code", "action_type", "product_id", "duration_seconds", "device_type", "created_at"),
-            "user_activity_logs", List.of("customer_code", "action_type", "product_id", "duration_seconds", "device_type", "created_at"),
-            "reviews", List.of("customer_code", "product_id", "rating", "comment", "created_at")
+            "user_activities", List.of("customer_code", "action_type", "product_id", "duration_seconds", "device_type", "created_at")
     );
 
     /**
@@ -87,7 +82,14 @@ public class CsvImportService {
             sampleRows.add(parsed.rows().get(i));
         }
 
-        List<String> targetFields = TARGET_FIELDS.getOrDefault(targetTable.toLowerCase().trim(), Collections.emptyList());
+        String detectedTable = detectTargetTable(parsed.headers());
+        String resolvedTable = (hasText(targetTable) && !"customers".equalsIgnoreCase(targetTable) && !"orders".equalsIgnoreCase(targetTable))
+                ? targetTable.toLowerCase().trim()
+                : detectedTable;
+        if ("all_in_one".equals(resolvedTable) || "customers".equals(resolvedTable) || "orders".equals(resolvedTable)) {
+            resolvedTable = "all";
+        }
+        List<String> targetFields = TARGET_FIELDS.getOrDefault(resolvedTable, TARGET_FIELDS.get("all"));
 
         return CsvPreviewDto.builder()
                 .fileId(fileId)
@@ -97,6 +99,7 @@ public class CsvImportService {
                 .sampleRows(sampleRows)
                 .targetFields(targetFields)
                 .fileFormat(parsed.format())
+                .detectedTable(resolvedTable)
                 .build();
     }
 
@@ -140,8 +143,12 @@ public class CsvImportService {
             MultiFormatFileParser.ParsedFileData parsed = fileParser.parse(storedInfo.path(), storedInfo.originalFilename());
             executeRows(logEntry, parsed.rows(), request.getTargetTable(), request.getColumnMapping(), request.isCleanBeforeImport());
 
-            if (request.isSaveAsTemplate() && request.getTemplateName() != null && !request.getTemplateName().isBlank()) {
-                saveMapping(request.getTemplateName(), request.getTargetTable(), request.getColumnMapping());
+            if (request.isSaveAsTemplate() && hasText(request.getTemplateName())) {
+                importMappingService.saveMapping(new ImportMappingRequestDto(
+                        request.getTemplateName(),
+                        request.getTargetTable(),
+                        request.getColumnMapping()
+                ));
             }
         } catch (Exception e) {
             logEntry.setStatus("FAILED");
@@ -174,7 +181,10 @@ public class CsvImportService {
         int failed = 0;
 
         Map<String, String> mapping = mappingInput != null ? mappingInput : Collections.emptyMap();
-        String targetTable = targetTableInput.toLowerCase().trim();
+        String targetTable = targetTableInput != null ? targetTableInput.toLowerCase().trim() : "all";
+        if ("customers".equals(targetTable) || "orders".equals(targetTable) || "all_in_one".equals(targetTable)) {
+            targetTable = "all";
+        }
 
         if (cleanBeforeImport) {
             try {
@@ -193,307 +203,233 @@ public class CsvImportService {
             }
         }
 
-            if ("customers".equals(targetTable)) {
-                for (int i = 0; i < rows.size(); i++) {
-                    Map<String, String> row = rows.get(i);
-                    try {
-                        String code = getValue(row, mapping, "customer_code", "customer_id", "cust_id", "cust_code", "customerid", "id");
-                        String name = getValue(row, mapping, "full_name", "customer_name", "name", "customername");
-                        String email = getValue(row, mapping, "email", "mail", "e-mail");
-                        String phone = getValue(row, mapping, "phone", "phone_number", "sdt", "mobile");
-                        String city = getValue(row, mapping, "city", "province", "address");
-                        String gender = getValue(row, mapping, "gender", "sex");
+        Category defaultCategory = categoryRepository.findAll().stream().findFirst().orElse(null);
 
-                        if (code == null || code.isBlank()) {
-                            code = "CUST_" + System.currentTimeMillis() + "_" + (i + 1);
-                        }
-                        if (name == null || name.isBlank()) {
-                            name = "Khách hàng " + code;
-                        }
-                        if (email == null || email.isBlank()) {
-                            email = code.toLowerCase().replaceAll("[^a-z0-9_]", "") + "@example.com";
-                        }
+        if ("all".equals(targetTable)) {
+            for (int i = 0; i < rows.size(); i++) {
+                Map<String, String> row = rows.get(i);
+                try {
+                    String orderCode = getValue(row, mapping, "order_code", "order_id", "orderid", "id", "code");
+                    String custCode = getValue(row, mapping, "customer_code", "customer_id", "cust_id", "cust_code", "customerid");
+                    String custName = getValue(row, mapping, "full_name", "customer_name", "name", "customername");
+                    String custEmail = getValue(row, mapping, "email", "mail", "e-mail");
+                    String custPhone = getValue(row, mapping, "phone", "phone_number", "sdt", "mobile", "telephone");
+                    String custCity = getValue(row, mapping, "city", "province", "address", "thanhpho", "tinhthanh");
+                    String custGender = getValue(row, mapping, "gender", "sex", "gioitinh");
+                    String amountStr = getValue(row, mapping, "total_amount", "order_amount", "amount", "total", "price");
+                    String status = getValue(row, mapping, "order_status", "status", "orderstatus");
+                    String paymentMethod = getValue(row, mapping, "payment_method", "payment", "method");
+                    String dateStr = getValue(row, mapping, "order_date", "orderdate", "date", "created_at");
 
-                        Optional<Customer> existing = customerRepository.findByCustomerCode(code);
-                        if (existing.isEmpty() && email != null) {
-                            existing = customerRepository.findByEmail(email);
-                        }
+                    // Thông tin sản phẩm (nếu file có cột sản phẩm)
+                    String prodName = getValue(row, mapping, "product_name", "product", "item_name", "sanpham", "tensanpham", "name");
+                    String prodPriceStr = getValue(row, mapping, "product_price", "unit_price", "price", "gia", "dongia");
+                    String prodCategory = getValue(row, mapping, "category_name", "category", "danhmuc", "loaisanpham");
+                    String prodQuantityStr = getValue(row, mapping, "quantity", "qty", "soluong", "so_luong");
 
-                        if (existing.isPresent()) {
-                            Customer c = existing.get();
-                            c.setFullName(name);
-                            if (phone != null && !phone.isBlank()) c.setPhone(phone);
-                            if (city != null && !city.isBlank()) c.setCity(city);
-                            if (gender != null && !gender.isBlank()) c.setGender(gender);
-                            customerRepository.save(c);
-                            updated++;
-                        } else {
-                            Customer c = Customer.builder()
-                                    .customerCode(code)
-                                    .fullName(name)
-                                    .email(email)
-                                    .phone(phone)
-                                    .gender(gender)
-                                    .city(city)
-                                    .createdAt(LocalDateTime.now())
-                                    .build();
-                            customerRepository.save(c);
-                            imported++;
-                        }
-                    } catch (Exception ex) {
-                        log.warn("Lỗi import dòng khách hàng {}: {}", i, ex.getMessage());
-                        failed++;
+                    // 1. Xử lý Khách hàng
+                    Customer customer = null;
+                    if (hasText(custCode)) {
+                        customer = customerRepository.findByCustomerCode(custCode).orElse(null);
                     }
-                }
-            } else if ("orders".equals(targetTable) || "all".equals(targetTable) || "all_in_one".equals(targetTable)) {
-                for (int i = 0; i < rows.size(); i++) {
-                    Map<String, String> row = rows.get(i);
-                    try {
-                        String orderCode = getValue(row, mapping, "order_code", "order_id", "orderid", "id", "code");
-                        String custCode = getValue(row, mapping, "customer_code", "customer_id", "cust_id", "cust_code", "customerid");
-                        String custName = getValue(row, mapping, "full_name", "customer_name", "name", "customername");
-                        String custEmail = getValue(row, mapping, "email", "mail", "e-mail");
-                        String custPhone = getValue(row, mapping, "phone", "phone_number", "sdt", "mobile", "telephone");
-                        String custCity = getValue(row, mapping, "city", "province", "address", "thanhpho", "tinhthanh");
-                        String custGender = getValue(row, mapping, "gender", "sex", "gioitinh");
-                        String amountStr = getValue(row, mapping, "total_amount", "order_amount", "amount", "total", "price");
-                        String status = getValue(row, mapping, "order_status", "status", "orderstatus");
-                        String paymentMethod = getValue(row, mapping, "payment_method", "payment", "method");
-                        String dateStr = getValue(row, mapping, "order_date", "orderdate", "date", "created_at");
-
-                        // Thông tin sản phẩm (nếu file có cột sản phẩm)
-                        String prodName = getValue(row, mapping, "product_name", "product", "item_name", "sanpham", "tensanpham", "name");
-                        String prodPriceStr = getValue(row, mapping, "product_price", "unit_price", "price", "gia", "dongia");
-                        String prodCategory = getValue(row, mapping, "category_name", "category", "danhmuc", "loaisanpham");
-                        String prodQuantityStr = getValue(row, mapping, "quantity", "qty", "soluong", "so_luong");
-
-                        // 1. Xử lý Khách hàng
-                        Customer customer = null;
-                        if (custCode != null && !custCode.isBlank()) {
-                            customer = customerRepository.findByCustomerCode(custCode).orElse(null);
-                        }
-                        if (customer == null && custEmail != null && !custEmail.isBlank()) {
-                            customer = customerRepository.findByEmail(custEmail).orElse(null);
-                        }
-
-                        if (customer == null && ((custCode != null && !custCode.isBlank()) || (custEmail != null && !custEmail.isBlank()) || (custName != null && !custName.isBlank()))) {
-                            String code = (custCode != null && !custCode.isBlank()) ? custCode : "CUST_" + System.currentTimeMillis() + "_" + (i + 1);
-                            String name = (custName != null && !custName.isBlank()) ? custName : "Khách hàng " + code;
-                            String email = (custEmail != null && !custEmail.isBlank()) ? custEmail : (code.toLowerCase().replaceAll("[^a-z0-9_]", "") + "@example.com");
-                            customer = Customer.builder()
-                                    .customerCode(code)
-                                    .fullName(name)
-                                    .email(email)
-                                    .phone(custPhone)
-                                    .city(custCity)
-                                    .gender(custGender)
-                                    .createdAt(LocalDateTime.now())
-                                    .build();
-                            customer = customerRepository.save(customer);
-                        } else if (customer != null) {
-                            boolean changed = false;
-                            if (custName != null && !custName.isBlank() && 
-                                    (customer.getFullName() == null || customer.getFullName().startsWith("Customer CUST_") || customer.getFullName().startsWith("Khách hàng CUST_") || !customer.getFullName().equals(custName))) {
-                                customer.setFullName(custName);
-                                changed = true;
-                            }
-                            if (custEmail != null && !custEmail.isBlank() && !custEmail.equals(customer.getEmail())) {
-                                customer.setEmail(custEmail);
-                                changed = true;
-                            }
-                            if (custPhone != null && !custPhone.isBlank() && !custPhone.equals(customer.getPhone())) {
-                                customer.setPhone(custPhone);
-                                changed = true;
-                            }
-                            if (custCity != null && !custCity.isBlank() && !custCity.equals(customer.getCity())) {
-                                customer.setCity(custCity);
-                                changed = true;
-                            }
-                            if (custGender != null && !custGender.isBlank() && !custGender.equals(customer.getGender())) {
-                                customer.setGender(custGender);
-                                changed = true;
-                            }
-                            if (changed) {
-                                customer = customerRepository.save(customer);
-                            }
-                        }
-
-                        if (customer == null) {
-                            customer = customerRepository.findAll().stream().findFirst().orElse(null);
-                        }
-
-                        // 2. Xử lý Sản phẩm (nếu có)
-                        Product product = null;
-                        if (prodName != null && !prodName.isBlank()) {
-                            final String finalProdName = prodName.trim();
-                            product = productRepository.findByName(finalProdName).orElse(null);
-                            if (product == null) {
-                                Category category = null;
-                                if (prodCategory != null && !prodCategory.isBlank()) {
-                                    final String finalCatName = prodCategory.trim();
-                                    category = categoryRepository.findByName(finalCatName)
-                                            .orElseGet(() -> categoryRepository.save(Category.builder().name(finalCatName).description(finalCatName).build()));
-                                } else {
-                                    category = categoryRepository.findAll().stream().findFirst().orElse(null);
-                                }
-                                BigDecimal prodPrice = parseBigDecimal(prodPriceStr, BigDecimal.valueOf(100000));
-                                product = Product.builder()
-                                        .name(finalProdName)
-                                        .price(prodPrice)
-                                        .stockQuantity(100)
-                                        .category(category)
-                                        .createdAt(LocalDateTime.now())
-                                        .build();
-                                product = productRepository.save(product);
-                            }
-                        }
-
-                        // 3. Xử lý Đơn hàng
-                        boolean hasOrderInfo = (orderCode != null && !orderCode.isBlank()) || (amountStr != null && !amountStr.isBlank());
-                        if (hasOrderInfo && customer != null) {
-                            BigDecimal totalAmount = parseBigDecimal(amountStr, BigDecimal.valueOf(500000));
-                            LocalDateTime orderDate = parseDateTime(dateStr);
-                            String finalOrderCode = (orderCode != null && !orderCode.isBlank()) ? orderCode : "ORD_" + System.currentTimeMillis() + "_" + (i + 1);
-
-                            Optional<Order> existing = orderRepository.findByOrderCode(finalOrderCode);
-                            Order ord;
-                            if (existing.isPresent()) {
-                                ord = existing.get();
-                                ord.setCustomer(customer);
-                                ord.setTotalAmount(totalAmount);
-                                ord.setOrderStatus(status != null && !status.isBlank() ? status.toUpperCase().trim() : "COMPLETED");
-                                ord.setPaymentMethod(paymentMethod != null && !paymentMethod.isBlank() ? paymentMethod.toUpperCase().trim() : "COD");
-                                ord.setOrderDate(orderDate);
-                                ord = orderRepository.save(ord);
-                                updated++;
-                            } else {
-                                ord = Order.builder()
-                                        .orderCode(finalOrderCode)
-                                        .customer(customer)
-                                        .totalAmount(totalAmount)
-                                        .orderStatus(status != null && !status.isBlank() ? status.toUpperCase().trim() : "COMPLETED")
-                                        .paymentMethod(paymentMethod != null && !paymentMethod.isBlank() ? paymentMethod.toUpperCase().trim() : "COD")
-                                        .orderDate(orderDate)
-                                        .build();
-                                ord = orderRepository.save(ord);
-                                imported++;
-                            }
-
-                            // 4. Nếu có sản phẩm đi kèm đơn, lưu OrderDetail
-                            if (product != null) {
-                                int qty = 1;
-                                if (prodQuantityStr != null && !prodQuantityStr.isBlank()) {
-                                    try {
-                                        qty = Math.max(1, Integer.parseInt(prodQuantityStr.replaceAll("[^0-9]", "")));
-                                    } catch (Exception ignored) {}
-                                }
-                                BigDecimal unitPrice = product.getPrice() != null ? product.getPrice() : BigDecimal.valueOf(100000);
-                                OrderDetail od = OrderDetail.builder()
-                                        .order(ord)
-                                        .product(product)
-                                        .quantity(qty)
-                                        .unitPrice(unitPrice)
-                                        .subtotal(unitPrice.multiply(BigDecimal.valueOf(qty)))
-                                        .build();
-                                orderDetailRepository.save(od);
-                            }
-                        } else if (customer != null) {
-                            imported++;
-                        } else if (product != null) {
-                            imported++;
-                        } else {
-                            failed++;
-                        }
-                    } catch (Exception ex) {
-                        log.warn("Lỗi import dòng {}: {}", i, ex.getMessage());
-                        failed++;
+                    if (customer == null && hasText(custEmail)) {
+                        customer = customerRepository.findByEmail(custEmail).orElse(null);
                     }
-                }
-            } else if ("products".equals(targetTable)) {
-                for (int i = 0; i < rows.size(); i++) {
-                    Map<String, String> row = rows.get(i);
-                    try {
-                        String name = getMappedValue(row, mapping.get("name"));
-                        String priceStr = getMappedValue(row, mapping.get("price"));
-                        String stockStr = getMappedValue(row, mapping.get("stock_quantity"));
-                        String catName = getMappedValue(row, mapping.get("category_name"));
 
-                        if (name == null || name.isBlank()) {
-                            name = "Sản phẩm " + (i + 1);
-                        }
-                        BigDecimal price = parseBigDecimal(priceStr, BigDecimal.valueOf(100000));
-                        int stock = 50;
-                        try {
-                            if (stockStr != null) stock = Integer.parseInt(stockStr.replaceAll("[^0-9]", ""));
-                        } catch (Exception ignored) {}
+                    boolean customerCreated = false;
+                    boolean customerUpdated = false;
 
-                        Category category = null;
-                        if (catName != null && !catName.isBlank()) {
-                            final String finalCatName = catName.trim();
-                            category = categoryRepository.findByName(finalCatName)
-                                    .orElseGet(() -> categoryRepository.save(Category.builder().name(finalCatName).description(finalCatName).build()));
-                        } else {
-                            category = categoryRepository.findAll().stream().findFirst().orElse(null);
-                        }
-
-                        Product product = Product.builder()
-                                .name(name)
-                                .price(price)
-                                .stockQuantity(stock)
-                                .category(category)
+                    if (customer == null && (hasText(custCode) || hasText(custEmail) || hasText(custName))) {
+                        String code = hasText(custCode) ? custCode : "CUST_" + System.currentTimeMillis() + "_" + (i + 1);
+                        String name = hasText(custName) ? custName : "Khách hàng " + code;
+                        String email = hasText(custEmail) ? custEmail : (code.toLowerCase().replaceAll("[^a-z0-9_]", "") + "@example.com");
+                        customer = Customer.builder()
+                                .customerCode(code)
+                                .fullName(name)
+                                .email(email)
+                                .phone(custPhone)
+                                .city(custCity)
+                                .gender(custGender)
                                 .createdAt(LocalDateTime.now())
                                 .build();
-
-                        productRepository.save(product);
-                        imported++;
-                    } catch (Exception ex) {
-                        log.warn("Lỗi import sản phẩm {}: {}", i, ex.getMessage());
-                        failed++;
+                        customer = customerRepository.save(customer);
+                        customerCreated = true;
+                    } else if (customer != null) {
+                        boolean changed = false;
+                        if (hasText(custName) &&
+                                (customer.getFullName() == null || customer.getFullName().startsWith("Customer CUST_") || customer.getFullName().startsWith("Khách hàng CUST_") || !customer.getFullName().equals(custName))) {
+                            customer.setFullName(custName);
+                            changed = true;
+                        }
+                        if (hasText(custEmail) && !custEmail.equals(customer.getEmail())) {
+                            customer.setEmail(custEmail);
+                            changed = true;
+                        }
+                        if (hasText(custPhone) && !custPhone.equals(customer.getPhone())) {
+                            customer.setPhone(custPhone);
+                            changed = true;
+                        }
+                        if (hasText(custCity) && !custCity.equals(customer.getCity())) {
+                            customer.setCity(custCity);
+                            changed = true;
+                        }
+                        if (hasText(custGender) && !custGender.equals(customer.getGender())) {
+                            customer.setGender(custGender);
+                            changed = true;
+                        }
+                        if (changed) {
+                            customer = customerRepository.save(customer);
+                            customerUpdated = true;
+                        }
                     }
-                }
-            } else if ("user_activities".equals(targetTable) || "user_activity_logs".equals(targetTable)) {
-                for (int i = 0; i < rows.size(); i++) {
-                    Map<String, String> row = rows.get(i);
-                    try {
-                        String custCode = getMappedValue(row, mapping.get("customer_code"));
-                        String actionType = getMappedValue(row, mapping.get("action_type"));
-                        String durationStr = getMappedValue(row, mapping.get("duration_seconds"));
-                        String deviceType = getMappedValue(row, mapping.get("device_type"));
-                        String dateStr = getMappedValue(row, mapping.get("created_at"));
 
-                        Customer customer = null;
-                        if (custCode != null && !custCode.isBlank()) {
-                            customer = customerRepository.findByCustomerCode(custCode).orElse(null);
-                        }
-                        if (customer == null) {
-                            customer = customerRepository.findAll().stream().findFirst().orElse(null);
-                        }
-
-                        if (customer != null) {
-                            int duration = 60;
-                            try {
-                                if (durationStr != null) duration = Integer.parseInt(durationStr.replaceAll("[^0-9]", ""));
-                            } catch (Exception ignored) {}
-
-                            UserActivityLog act = UserActivityLog.builder()
-                                    .customer(customer)
-                                    .actionType(actionType != null && !actionType.isBlank() ? actionType : "VIEW_PRODUCT")
-                                    .durationSeconds(duration)
-                                    .deviceType(deviceType != null && !deviceType.isBlank() ? deviceType.toUpperCase() : "DESKTOP")
-                                    .createdAt(parseDateTime(dateStr))
+                    // 2. Xử lý Sản phẩm (nếu có)
+                    Product product = null;
+                    if (hasText(prodName)) {
+                        final String finalProdName = prodName.trim();
+                        product = productRepository.findByName(finalProdName).orElse(null);
+                        if (product == null) {
+                            Category category = findOrCreateCategory(prodCategory, defaultCategory);
+                            BigDecimal prodPrice = parseBigDecimal(prodPriceStr, BigDecimal.valueOf(100000));
+                            product = Product.builder()
+                                    .name(finalProdName)
+                                    .price(prodPrice)
+                                    .stockQuantity(100)
+                                    .category(category)
+                                    .createdAt(LocalDateTime.now())
                                     .build();
-
-                            activityLogRepository.save(act);
-                            imported++;
-                        } else {
-                            failed++;
+                            product = productRepository.save(product);
                         }
-                    } catch (Exception ex) {
-                        log.warn("Lỗi import nhật ký hoạt động {}: {}", i, ex.getMessage());
+                    }
+
+                    // 3. Xử lý Đơn hàng (yêu cầu phải có khách hàng hợp lệ)
+                    boolean hasOrderInfo = hasText(orderCode) || hasText(amountStr);
+                    if (hasOrderInfo && customer != null) {
+                        BigDecimal totalAmount = parseBigDecimal(amountStr, BigDecimal.valueOf(500000));
+                        LocalDateTime orderDate = parseDateTime(dateStr);
+                        String finalOrderCode = hasText(orderCode) ? orderCode : "ORD_" + System.currentTimeMillis() + "_" + (i + 1);
+
+                        Optional<Order> existing = orderRepository.findByOrderCode(finalOrderCode);
+                        Order ord;
+                        if (existing.isPresent()) {
+                            ord = existing.get();
+                            ord.setCustomer(customer);
+                            ord.setTotalAmount(totalAmount);
+                            ord.setOrderStatus(hasText(status) ? status.toUpperCase().trim() : "COMPLETED");
+                            ord.setPaymentMethod(hasText(paymentMethod) ? paymentMethod.toUpperCase().trim() : "COD");
+                            ord.setOrderDate(orderDate);
+                            ord = orderRepository.save(ord);
+                            updated++;
+                        } else {
+                            ord = Order.builder()
+                                    .orderCode(finalOrderCode)
+                                    .customer(customer)
+                                    .totalAmount(totalAmount)
+                                    .orderStatus(hasText(status) ? status.toUpperCase().trim() : "COMPLETED")
+                                    .paymentMethod(hasText(paymentMethod) ? paymentMethod.toUpperCase().trim() : "COD")
+                                    .orderDate(orderDate)
+                                    .build();
+                            ord = orderRepository.save(ord);
+                            imported++;
+                        }
+
+                        // 4. Nếu có sản phẩm đi kèm đơn, lưu OrderDetail
+                        if (product != null) {
+                            int qty = parseIntSafe(prodQuantityStr, 1);
+                            BigDecimal unitPrice = product.getPrice() != null ? product.getPrice() : BigDecimal.valueOf(100000);
+                            OrderDetail od = OrderDetail.builder()
+                                    .order(ord)
+                                    .product(product)
+                                    .quantity(qty)
+                                    .unitPrice(unitPrice)
+                                    .subtotal(unitPrice.multiply(BigDecimal.valueOf(qty)))
+                                    .build();
+                            orderDetailRepository.save(od);
+                        }
+                    } else if (customer != null) {
+                        if (customerUpdated) {
+                            updated++;
+                        } else {
+                            imported++;
+                        }
+                    } else if (product != null) {
+                        imported++;
+                    } else {
                         failed++;
                     }
+                } catch (Exception ex) {
+                    log.warn("Lỗi import dòng {}: {}", i, ex.getMessage());
+                    failed++;
                 }
             }
+        } else if ("products".equals(targetTable)) {
+            for (int i = 0; i < rows.size(); i++) {
+                Map<String, String> row = rows.get(i);
+                try {
+                    String name = getMappedValue(row, mapping.get("name"));
+                    String priceStr = getMappedValue(row, mapping.get("price"));
+                    String stockStr = getMappedValue(row, mapping.get("stock_quantity"));
+                    String catName = getMappedValue(row, mapping.get("category_name"));
+
+                    if (!hasText(name)) {
+                        name = "Sản phẩm " + (i + 1);
+                    }
+                    BigDecimal price = parseBigDecimal(priceStr, BigDecimal.valueOf(100000));
+                    int stock = parseIntSafe(stockStr, 50);
+                    Category category = findOrCreateCategory(catName, defaultCategory);
+
+                    Product product = Product.builder()
+                            .name(name)
+                            .price(price)
+                            .stockQuantity(stock)
+                            .category(category)
+                            .createdAt(LocalDateTime.now())
+                            .build();
+
+                    productRepository.save(product);
+                    imported++;
+                } catch (Exception ex) {
+                    log.warn("Lỗi import sản phẩm {}: {}", i, ex.getMessage());
+                    failed++;
+                }
+            }
+        } else if ("user_activities".equals(targetTable) || "user_activity_logs".equals(targetTable)) {
+            for (int i = 0; i < rows.size(); i++) {
+                Map<String, String> row = rows.get(i);
+                try {
+                    String custCode = getMappedValue(row, mapping.get("customer_code"));
+                    String actionType = getMappedValue(row, mapping.get("action_type"));
+                    String durationStr = getMappedValue(row, mapping.get("duration_seconds"));
+                    String deviceType = getMappedValue(row, mapping.get("device_type"));
+                    String dateStr = getMappedValue(row, mapping.get("created_at"));
+
+                    Customer customer = null;
+                    if (hasText(custCode)) {
+                        customer = customerRepository.findByCustomerCode(custCode).orElse(null);
+                    }
+
+                    if (customer != null) {
+                        int duration = parseIntSafe(durationStr, 60);
+
+                        UserActivityLog act = UserActivityLog.builder()
+                                .customer(customer)
+                                .actionType(hasText(actionType) ? actionType : "VIEW_PRODUCT")
+                                .durationSeconds(duration)
+                                .deviceType(hasText(deviceType) ? deviceType.toUpperCase() : "DESKTOP")
+                                .createdAt(parseDateTime(dateStr))
+                                .build();
+
+                        activityLogRepository.save(act);
+                        imported++;
+                    } else {
+                        failed++;
+                    }
+                } catch (Exception ex) {
+                    log.warn("Lỗi import nhật ký hoạt động {}: {}", i, ex.getMessage());
+                    failed++;
+                }
+            }
+        }
 
         logEntry.setStatus("SUCCESS");
         logEntry.setRecordsImported(imported);
@@ -581,22 +517,6 @@ public class CsvImportService {
         return newLog;
     }
 
-    public List<ImportMapping> getSavedMappings(String targetTable) {
-        if (targetTable == null || targetTable.isBlank() || "all".equalsIgnoreCase(targetTable) || "all_in_one".equalsIgnoreCase(targetTable)) {
-            return mappingRepository.findAll();
-        }
-        return mappingRepository.findByTableTarget(targetTable);
-    }
-
-    public ImportMapping saveMapping(String name, String targetTable, Map<String, String> mappingConfig) throws JsonProcessingException {
-        ImportMapping mapping = ImportMapping.builder()
-                .name(name)
-                .tableTarget(targetTable)
-                .mappingConfig(objectMapper.writeValueAsString(mappingConfig))
-                .createdAt(LocalDateTime.now())
-                .build();
-        return mappingRepository.save(mapping);
-    }
 
     public Page<ImportLog> getImportHistory(Pageable pageable) {
         return importLogRepository.findAllByOrderByStartedAtDesc(pageable);
@@ -862,5 +782,52 @@ public class CsvImportService {
         } catch (Exception ignored) {}
 
         return LocalDateTime.now();
+    }
+
+    private static boolean hasText(String str) {
+        return str != null && !str.isBlank();
+    }
+
+    private static int parseIntSafe(String str, int defaultValue) {
+        if (!hasText(str)) return defaultValue;
+        try {
+            String digits = str.replaceAll("[^0-9]", "");
+            return digits.isEmpty() ? defaultValue : Integer.parseInt(digits);
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    private Category findOrCreateCategory(String catName, Category defaultCategory) {
+        if (!hasText(catName)) {
+            return defaultCategory;
+        }
+        final String finalCatName = catName.trim();
+        return categoryRepository.findByName(finalCatName)
+                .orElseGet(() -> categoryRepository.save(Category.builder().name(finalCatName).description(finalCatName).build()));
+    }
+
+    public static String detectTargetTable(List<String> headers) {
+        if (headers == null || headers.isEmpty()) return "all";
+        List<String> lowerHeaders = headers.stream()
+                .map(h -> h.toLowerCase().replaceAll("[^a-z0-9]", ""))
+                .toList();
+
+        boolean hasOrderSignals = lowerHeaders.stream().anyMatch(h ->
+                List.of("orderid", "orderamount", "orderdate", "madohang", "madon", "ordercode", "totalamount").contains(h)
+        );
+        boolean hasCustomerSignals = lowerHeaders.stream().anyMatch(h ->
+                List.of("customercode", "customerid", "makhachhang", "makh", "email", "phone", "sdt").contains(h)
+        );
+        boolean hasProductOnlySignals = lowerHeaders.stream().anyMatch(h ->
+                List.of("stockquantity", "categoryname", "danhmuc", "tonkho").contains(h)
+        ) && !hasOrderSignals && !hasCustomerSignals;
+        boolean hasActivityOnlySignals = lowerHeaders.stream().anyMatch(h ->
+                List.of("actiontype", "devicetype", "durationseconds", "hoatdong").contains(h)
+        ) && !hasOrderSignals;
+
+        if (hasProductOnlySignals) return "products";
+        if (hasActivityOnlySignals) return "user_activities";
+        return "all";
     }
 }

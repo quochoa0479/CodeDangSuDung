@@ -1,12 +1,8 @@
 package com.cd1.rfmanalytics.controller;
 
 import com.cd1.rfmanalytics.dto.*;
-import com.cd1.rfmanalytics.entity.SegmentHistory;
 import com.cd1.rfmanalytics.service.AnalyticsService;
-import com.cd1.rfmanalytics.service.RfmAnalyticsService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,7 +13,6 @@ import java.util.List;
 public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
-    private final RfmAnalyticsService rfmAnalyticsService;
 
     @GetMapping("/dashboard")
     public ApiResponse<DashboardSummaryDto> getDashboard() {
@@ -42,24 +37,5 @@ public class AnalyticsController {
     @GetMapping("/revenue-trends")
     public ApiResponse<List<MonthlyRevenueDto>> getRevenueTrends() {
         return ApiResponse.ok(analyticsService.getMonthlyRevenueTrends());
-    }
-
-    // --- Backward Compatible Endpoints ---
-    @GetMapping("/summary")
-    public ApiResponse<RfmSummaryDto> getSummary() {
-        return ApiResponse.ok(rfmAnalyticsService.getSummary());
-    }
-
-    @PostMapping("/calculate-rfm")
-    public ApiResponse<String> calculateRfm() {
-        rfmAnalyticsService.triggerRfmCalculation();
-        return ApiResponse.ok("RFM calculation triggered successfully", "OK");
-    }
-
-    @GetMapping("/history")
-    public ApiResponse<Page<SegmentHistory>> getSegmentHistory(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return ApiResponse.ok(rfmAnalyticsService.getSegmentHistory(PageRequest.of(page, size)));
     }
 }

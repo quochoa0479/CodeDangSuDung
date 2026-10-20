@@ -3,7 +3,7 @@ import type { ApiResponse, PageResponse } from '../types/auth';
 import type { CsvPreview, ImportLog, ImportMapping, ImportRequest } from '../types/import';
 
 export const importApi = {
-  previewCsv: (file: File, targetTable = 'customers'): Promise<ApiResponse<CsvPreview>> => {
+  previewCsv: (file: File, targetTable = 'all'): Promise<ApiResponse<CsvPreview>> => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('targetTable', targetTable);
@@ -15,7 +15,7 @@ export const importApi = {
     });
   },
 
-  previewFile: (file: File, targetTable = 'customers'): Promise<ApiResponse<CsvPreview>> => {
+  previewFile: (file: File, targetTable = 'all'): Promise<ApiResponse<CsvPreview>> => {
     return importApi.previewCsv(file, targetTable);
   },
 

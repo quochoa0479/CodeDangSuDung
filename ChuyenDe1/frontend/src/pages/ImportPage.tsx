@@ -38,7 +38,6 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { importApi } from '../api/importApi';
-import { segmentApi } from '../api/segmentApi';
 import type { CsvPreview, ImportLog, ImportMapping } from '../types/import';
 import { formatNumber, formatDateTime } from '../utils/formatters';
 
@@ -142,7 +141,6 @@ export const ImportPage: React.FC = () => {
         message.success(`Phân tích lại tệp "${rerunRecord.fileName || 'dữ liệu'}" thành công! Đã tự động tính toán lại phân khúc RFM.`);
         setRerunModalVisible(false);
         fetchHistory(1);
-        segmentApi.recalculate();
       } else {
         message.error(res.message || 'Chạy lại phân tích thất bại');
       }
@@ -243,39 +241,18 @@ export const ImportPage: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     setUploading(true);
     try {
-      let currentTarget = targetTable;
-      let res = await importApi.previewFile(file, currentTarget);
+      const res = await importApi.previewCsv(file, targetTable);
       if (res.success && res.data) {
-        // Tự động nhận diện thông minh loại dữ liệu trong tệp
-        const lowerHeaders = res.data.headers.map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
-        const hasOrderSignals = lowerHeaders.some((h) =>
-          ['orderid', 'orderamount', 'orderdate', 'madohang', 'madon', 'ordercode', 'totalamount'].includes(h)
-        );
-        const hasCustomerSignals = lowerHeaders.some((h) =>
-          ['customercode', 'customerid', 'makhachhang', 'makh', 'email', 'phone', 'sdt'].includes(h)
-        );
-        const hasProductOnlySignals = lowerHeaders.some((h) =>
-          ['stockquantity', 'categoryname', 'danhmuc', 'tonkho'].includes(h)
-        ) && !hasOrderSignals && !hasCustomerSignals;
-        const hasActivityOnlySignals = lowerHeaders.some((h) =>
-          ['actiontype', 'devicetype', 'durationseconds', 'hoatdong'].includes(h)
-        ) && !hasOrderSignals;
-
-        if ((hasOrderSignals || hasCustomerSignals) && currentTarget !== 'all') {
-          currentTarget = 'all';
-          setTargetTable('all');
-          res = await importApi.previewFile(file, 'all');
-          message.info('💡 Hệ thống tự động kích hoạt chế độ Toàn diện All-in-One (xử lý Khách hàng, Đơn hàng, Sản phẩm cùng lúc).');
-        } else if (hasProductOnlySignals && currentTarget !== 'products') {
-          currentTarget = 'products';
-          setTargetTable('products');
-          res = await importApi.previewFile(file, 'products');
-          message.info('💡 Hệ thống tự động chọn Bảng Sản phẩm (products).');
-        } else if (hasActivityOnlySignals && currentTarget !== 'user_activities') {
-          currentTarget = 'user_activities';
-          setTargetTable('user_activities');
-          res = await importApi.previewFile(file, 'user_activities');
-          message.info('💡 Hệ thống tự động chọn Bảng Nhật ký hoạt động (user_activities).');
+        const detected = res.data.detectedTable || 'all';
+        if (detected !== targetTable) {
+          setTargetTable(detected);
+          if (detected === 'all') {
+            message.info('💡 Hệ thống tự động kích hoạt chế độ Toàn diện All-in-One (xử lý Khách hàng, Đơn hàng, Sản phẩm cùng lúc).');
+          } else if (detected === 'products') {
+            message.info('💡 Hệ thống tự động chọn Bảng Sản phẩm (products).');
+          } else if (detected === 'user_activities') {
+            message.info('💡 Hệ thống tự động chọn Bảng Nhật ký hoạt động (user_activities).');
+          }
         }
 
         setPreviewData(res.data);
@@ -359,8 +336,6 @@ export const ImportPage: React.FC = () => {
         message.success('Nhập dữ liệu thành công!');
         // Refresh import history in background
         fetchHistory(1);
-        // Recalculate RFM in background
-        segmentApi.recalculate();
       } else {
         message.error(res.message || 'Import thất bại');
       }

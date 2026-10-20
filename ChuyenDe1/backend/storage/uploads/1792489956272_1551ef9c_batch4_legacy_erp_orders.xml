@@ -1,0 +1,53 @@
+<?xml version='1.0' encoding='utf-8'?>
+<orders>
+  <order>
+    <order_id>ORD_X401</order_id>
+    <customer_id>CUST_401</customer_id>
+    <customer_name>Cong ty TNHH Nam A</customer_name>
+    <email>contact@nama-corp.vn</email>
+    <order_date>2026-09-25 15:00:00</order_date>
+    <order_amount>45000000</order_amount>
+    <payment_method>Corporate Transfer</payment_method>
+    <status>Completed</status>
+  </order>
+  <order>
+    <order_id>ORD_X402</order_id>
+    <customer_id>CUST_401</customer_id>
+    <customer_name>Cong ty TNHH Nam A</customer_name>
+    <email>contact@nama-corp.vn</email>
+    <order_date>2026-10-03 11:10:00</order_date>
+    <order_amount>38000000</order_amount>
+    <payment_method>Corporate Transfer</payment_method>
+    <status>Completed</status>
+  </order>
+  <order>
+    <order_id>ORD_X403</order_id>
+    <customer_id>CUST_402</customer_id>
+    <customer_name>Doan Dai Nghia</customer_name>
+    <email>nghia.doan@enterprise.vn</email>
+    <order_date>2026-04-05 09:00:00</order_date>
+    <order_amount>19500000</order_amount>
+    <payment_method>Bank Transfer</payment_method>
+    <status>Completed</status>
+  </order>
+  <order>
+    <order_id>ORD_X404</order_id>
+    <customer_id>CUST_403</customer_id>
+    <customer_name>Kim Bao Ngoc</customer_name>
+    <email>ngoc.kim@retailhub.com</email>
+    <order_date>2026-10-09 14:30:00</order_date>
+    <order_amount>2800000</order_amount>
+    <payment_method>Credit Card</payment_method>
+    <status>Completed</status>
+  </order>
+  <order>
+    <order_id>ORD_X405</order_id>
+    <customer_id>CUST_404</customer_id>
+    <customer_name>Tong Cong Ty Song Da</customer_name>
+    <email>procurement@songda.vn</email>
+    <order_date>2025-11-20 16:40:00</order_date>
+    <order_amount>1500000</order_amount>
+    <payment_method>COD</payment_method>
+    <status>Completed</status>
+  </order>
+</orders>
